@@ -8,9 +8,6 @@ const ProductDetailPage = () => {
     <div className="min-h-screen bg-cream">
       <Header />
       <ProductDetail />
-            {/* Start of Tawk.to Script */}
-
-      {/* End of Tawk.to Script */}
       <Footer />
     </div>
   );
