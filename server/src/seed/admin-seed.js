@@ -26,8 +26,17 @@ const createAdminUser = async () => {
     
     // Insert admin user
     await sequelize.query(`
-      INSERT INTO users (email, password_hash, first_name, last_name, role, status)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (
+        email,
+        password_hash,
+        first_name,
+        last_name,
+        role,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
       ON CONFLICT (email) DO NOTHING
     `, {
       replacements: [adminEmail, hashedPassword, 'Admin', 'User', 'admin', 'active']
