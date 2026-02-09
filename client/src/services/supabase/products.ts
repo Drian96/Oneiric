@@ -38,12 +38,13 @@ const getFileMimeType = (file: File): string => {
 
 export const productService = {
   // Create a new product with images
-  async createProduct(productData: NewProductData, imageFiles: File[]): Promise<{ product: Product; images: ProductImage[] }> {
+  async createProduct(productData: NewProductData, imageFiles: File[], shopId?: string): Promise<{ product: Product; images: ProductImage[] }> {
     try {
       // First, create the product in the database
+      const payload = shopId ? { ...productData, shop_id: shopId } : productData;
       const { data: product, error: productError } = await supabase
         .from('products')
-        .insert([productData])
+        .insert([payload])
         .select()
         .single();
 
@@ -162,12 +163,18 @@ export const productService = {
   },
 
   // Get all products with their images
-  async getProducts(): Promise<Product[]> {
+  async getProducts(shopId?: string): Promise<Product[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Failed to fetch products: ${error.message}`);
@@ -181,13 +188,18 @@ export const productService = {
   },
 
   // Get single product by id
-  async getProductById(productId: string): Promise<Product | null> {
+  async getProductById(productId: string, shopId?: string): Promise<Product | null> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .select('*')
-        .eq('id', productId)
-        .single();
+        .eq('id', productId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query.single();
 
       if (error) {
         if ((error as any).code === 'PGRST116') return null; // not found
@@ -222,14 +234,18 @@ export const productService = {
   },
 
   // Update product
-  async updateProduct(productId: string, updates: Partial<NewProductData>): Promise<Product> {
+  async updateProduct(productId: string, updates: Partial<NewProductData>, shopId?: string): Promise<Product> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .update(updates)
-        .eq('id', productId)
-        .select()
-        .single();
+        .eq('id', productId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query.select().single();
 
       if (error) {
         throw new Error(`Failed to update product: ${error.message}`);
@@ -243,7 +259,7 @@ export const productService = {
   },
 
   // Delete product (this will also delete associated images due to CASCADE)
-  async deleteProduct(productId: string): Promise<void> {
+  async deleteProduct(productId: string, shopId?: string): Promise<void> {
     try {
       await ensureStorageAuth();
       // First, get the product's images to delete from storage
@@ -259,10 +275,16 @@ export const productService = {
       }
 
       // Delete product from database (images will be deleted automatically due to CASCADE)
-      const { error } = await supabase
+      let query = supabase
         .from('products')
         .delete()
         .eq('id', productId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { error } = await query;
 
       if (error) {
         throw new Error(`Failed to delete product: ${error.message}`);

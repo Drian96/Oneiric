@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserAddresses, Address, createOrder, type CreateOrderRequest, type OrderItem } from '../services/api';
+import { getUserAddresses, Address, createOrder, type CreateOrderRequest, type OrderItem, buildShopPath } from '../services/api';
 import Header from '../shared/Header';
 import Footer from '../shared/Footer';
 
@@ -58,7 +58,7 @@ const Checkout = () => {
   // Redirect if cart is empty
   useEffect(() => {
     if (cartItems.length === 0) {
-      navigate('/cart');
+      navigate(buildShopPath('cart'));
     }
   }, [cartItems, navigate]);
 
@@ -295,13 +295,13 @@ const Checkout = () => {
             
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate(buildShopPath(''))}
                 className="px-6 py-3 bg-dgreen text-white rounded-lg hover:bg-dgreen/90 transition-colors"
               >
                 Continue Shopping
               </button>
               <button
-                onClick={() => navigate('/profile')}
+                onClick={() => navigate(buildShopPath('profile'))}
                 className="px-6 py-3 border border-dgreen text-dgreen rounded-lg hover:bg-dgreen hover:text-white transition-colors"
               >
                 View My Orders

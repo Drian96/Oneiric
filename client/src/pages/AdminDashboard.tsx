@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { buildShopPath } from '../services/api';
 import AdminSidebar from '../components/admin/AdminSidebar';
 import AdminDashboardMain from '../components/admin/AdminDashboardMain';
 import AdminOrders from '../components/admin/AdminOrders';
@@ -27,7 +28,7 @@ const AdminDashboard = () => {
     if (isLoading) return;
     // Allow only staff roles
     if (!isAuthenticated || !user || !['admin', 'manager', 'staff'].includes(user.role)) {
-      navigate('/', { replace: true });
+      navigate(buildShopPath(''), { replace: true });
     }
   }, [isAuthenticated, isLoading, user, navigate]);
 

@@ -6,6 +6,7 @@ import { twMerge } from 'tailwind-merge';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { signInWithGoogle } from '../services/supabase/auth';
+import { buildShopPath } from '../services/api';
 import furnitureLogo from '../assets/AR-Furniture_Logo.png';
 import shopName from '../assets/NAME.png';
 // import { signInWithFacebook } from '../services/supabase/auth'; // Commented out - Facebook OAuth has conflicts
@@ -33,9 +34,9 @@ const Login: React.FC = () => {
     // We'll set a flag in session to indicate lastLoginRole via a custom event
     const role = sessionStorage.getItem('lastLoginRole');
     if (role === 'admin' || role === 'manager' || role === 'staff') {
-      navigate('/admin');
+      navigate(buildShopPath('admin'));
     } else {
-      navigate('/products');
+      navigate(buildShopPath('products'));
     }
   }, [navigate]);
 
@@ -48,7 +49,7 @@ const Login: React.FC = () => {
       const user = await login({ email, password });
       sessionStorage.setItem('lastLoginRole', user.role);
       if (user.role === 'admin' || user.role === 'manager' || user.role === 'staff') {
-        navigate('/admin');
+        navigate(buildShopPath('admin'));
         return;
       }
       setShowSuccessModal(true);
@@ -76,7 +77,7 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      await signInWithGoogle(`${window.location.origin}/auth/callback`);
+      await signInWithGoogle(`${window.location.origin}${buildShopPath('auth/callback')}`);
       // The OAuth flow will redirect, so we don't need to navigate here
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed. Please try again.');
@@ -109,7 +110,7 @@ const Login: React.FC = () => {
           />
 
         <div className="flex items-center justify-center z-10 mb-10">
-            <Link to="/" className="text-2xl font-serif font-bold text-dgreen hover:text-lgreen transition-colors">
+            <Link to={buildShopPath('')} className="text-2xl font-serif font-bold text-dgreen hover:text-lgreen transition-colors">
               <div className="flex items-center">
                 <img src={furnitureLogo} alt="Furniture Logo" className="h-20 mt-2" />
                 <img src={shopName} alt="Shop Name" className="h-15 mt-2" />
@@ -194,7 +195,7 @@ const Login: React.FC = () => {
           </button>
         </form>
         <div className="text-center mt-4">
-          <Link to="/forgot-password" className="text-sm text-lgreen hover:text-dgreen hover:underline transition-colors duration-200">
+          <Link to={buildShopPath('forgot-password')} className="text-sm text-lgreen hover:text-dgreen hover:underline transition-colors duration-200">
             Forgot password?
           </Link>
         </div>
@@ -237,7 +238,7 @@ const Login: React.FC = () => {
         <div className="text-center mt-6 text-white">
           No account?{' '}
           <Link
-            to="/signup"
+            to={buildShopPath('signup')}
             className="text-lgreen hover:text-dgreen hover:underline font-medium transition-colors duration-200"
           >
             Sign up

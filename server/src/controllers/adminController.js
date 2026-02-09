@@ -26,22 +26,25 @@ function buildDateRangeFilter(period) {
 // Returns headline stats and small datasets for dashboard widgets
 exports.getDashboard = async (req, res) => {
   try {
+    const shopId = req.shop?.id;
     // Compute totals in parallel
     const [salesRow] = await sequelize.query(
-      `SELECT COALESCE(SUM(total_amount),0)::numeric AS total_sales FROM public.orders`,
-      { type: QueryTypes.SELECT }
+      `SELECT COALESCE(SUM(total_amount),0)::numeric AS total_sales FROM public.orders WHERE shop_id = :shop_id`,
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
     const [ordersRow] = await sequelize.query(
-      `SELECT COUNT(*)::int AS total_orders FROM public.orders`,
-      { type: QueryTypes.SELECT }
+      `SELECT COUNT(*)::int AS total_orders FROM public.orders WHERE shop_id = :shop_id`,
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
     const [customersRow] = await sequelize.query(
-      `SELECT COUNT(*)::int AS total_customers FROM public.users`,
-      { type: QueryTypes.SELECT }
+      `SELECT COUNT(DISTINCT o.user_id)::int AS total_customers
+         FROM public.orders o
+        WHERE o.shop_id = :shop_id`,
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
     const [stockRow] = await sequelize.query(
-      `SELECT COALESCE(SUM(quantity),0)::int AS products_in_stock FROM public.products`,
-      { type: QueryTypes.SELECT }
+      `SELECT COALESCE(SUM(quantity),0)::int AS products_in_stock FROM public.products WHERE shop_id = :shop_id`,
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Recent orders
@@ -51,9 +54,10 @@ exports.getDashboard = async (req, res) => {
               o.total_amount AS amount,
               o.status
          FROM public.orders o
+        WHERE o.shop_id = :shop_id
         ORDER BY o.created_at DESC
         LIMIT 5`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Top products by sales qty
@@ -64,10 +68,11 @@ exports.getDashboard = async (req, res) => {
          FROM public.products p
          LEFT JOIN public.order_items oi ON oi.product_id = p.id
          LEFT JOIN public.orders o ON o.id = oi.order_id
+        WHERE p.shop_id = :shop_id
         GROUP BY p.id
         ORDER BY sales DESC
         LIMIT 5`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Sales by month (last 6 months)
@@ -79,10 +84,11 @@ exports.getDashboard = async (req, res) => {
                       COALESCE(SUM(total_amount),0)::numeric AS sales
                  FROM public.orders
                 WHERE created_at >= NOW() - INTERVAL '6 months'
+                  AND shop_id = :shop_id
                 GROUP BY 1
           ) t
         ORDER BY month`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     return res.json({
@@ -109,19 +115,21 @@ exports.getDashboard = async (req, res) => {
 exports.getReports = async (req, res) => {
   try {
     const period = (req.query.period || 'month').toLowerCase();
-    const whereClause = buildDateRangeFilter(period);
+    const shopId = req.shop?.id;
+    const whereClause = `${buildDateRangeFilter(period)} AND shop_id = :shop_id`;
+    const whereOrdersClause = `${buildDateRangeFilter(period)} AND o.shop_id = :shop_id`;
 
     const [revenueRow] = await sequelize.query(
       `SELECT COALESCE(SUM(total_amount),0)::numeric AS total_revenue FROM public.orders WHERE ${whereClause}`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
     const [ordersRow] = await sequelize.query(
       `SELECT COUNT(*)::int AS total_orders FROM public.orders WHERE ${whereClause}`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
     const [avgOrderRow] = await sequelize.query(
       `SELECT COALESCE(AVG(total_amount),0)::numeric AS avg_order_value FROM public.orders WHERE ${whereClause}`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Category distribution: percentage of qty per product category
@@ -131,11 +139,11 @@ exports.getReports = async (req, res) => {
          FROM public.order_items oi
          JOIN public.orders o ON o.id = oi.order_id
          JOIN public.products p ON p.id = oi.product_id
-        WHERE ${whereClause.replaceAll('created_at', 'o.created_at')}
+        WHERE ${whereOrdersClause.replaceAll('created_at', 'o.created_at')}
         GROUP BY p.category
         ORDER BY percentage DESC
         LIMIT 8`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     const topProducts = await sequelize.query(
@@ -145,11 +153,11 @@ exports.getReports = async (req, res) => {
          FROM public.products p
          LEFT JOIN public.order_items oi ON oi.product_id = p.id
          LEFT JOIN public.orders o ON o.id = oi.order_id
-        WHERE ${whereClause.replaceAll('created_at', 'o.created_at')}
+        WHERE ${whereOrdersClause.replaceAll('created_at', 'o.created_at')}
         GROUP BY p.id
         ORDER BY sales DESC
         LIMIT 8`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Revenue trend data based on period
@@ -176,7 +184,7 @@ exports.getReports = async (req, res) => {
         WHERE ${whereClause}
         GROUP BY ${groupBy}
         ORDER BY ${groupBy}`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Fill in missing periods with 0 revenue for better visualization
@@ -255,6 +263,7 @@ exports.getAuditLogs = async (req, res) => {
 exports.getCustomerOrders = async (req, res) => {
   try {
     const { id } = req.params;
+    const shopId = req.shop?.id;
     console.log(`🔄 Fetching orders for customer ${id}...`);
 
     // Get customer order statistics
@@ -268,12 +277,12 @@ exports.getCustomerOrders = async (req, res) => {
         COALESCE(SUM(o.total_amount), 0)::numeric AS total_spent,
         MAX(o.created_at) AS last_order_date
       FROM public.users u
-      LEFT JOIN public.orders o ON o.user_id = u.id
+      LEFT JOIN public.orders o ON o.user_id = u.id AND o.shop_id = :shop_id
       WHERE u.id = :id AND u.role = 'customer'
       GROUP BY u.id, u.first_name, u.last_name, u.email`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 
@@ -295,13 +304,13 @@ exports.getCustomerOrders = async (req, res) => {
         COUNT(oi.id) AS item_count
       FROM public.orders o
       LEFT JOIN public.order_items oi ON oi.order_id = o.id
-      WHERE o.user_id = :id
+      WHERE o.user_id = :id AND o.shop_id = :shop_id
       GROUP BY o.id, o.order_number, o.total_amount, o.status, o.created_at
       ORDER BY o.created_at DESC
       LIMIT 10`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 

@@ -1,6 +1,7 @@
 
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { buildShopPath } from '../../services/api';
 
 const FeaturedProducts = () => {
   const { isAuthenticated } = useAuth();
@@ -8,10 +9,10 @@ const FeaturedProducts = () => {
   const handleProductClick = (productId: number) => {
     if (isAuthenticated) {
       // If logged in, navigate to product detail
-      window.location.href = `/product/${productId}`;
+      window.location.href = buildShopPath(`product/${productId}`);
     } else {
       // If not logged in, redirect to login page
-      window.location.href = '/login';
+      window.location.href = buildShopPath('login');
     }
   };
   const products = [
@@ -92,7 +93,7 @@ const FeaturedProducts = () => {
         </div>
         
         <div className="text-center mt-12 mb-10">
-          <Link to="/products" className="bg-lgreen text-lg px-10 py-4 hover:bg-dgreen transition-colors duration-300 rounded-lg cursor-pointer inline-block">
+          <Link to={buildShopPath('products')} className="bg-lgreen text-lg px-10 py-4 hover:bg-dgreen transition-colors duration-300 rounded-lg cursor-pointer inline-block">
             View All Products
           </Link>
         </div>

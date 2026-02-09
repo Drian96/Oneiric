@@ -19,7 +19,8 @@ import {
   changePassword as apiChangePassword,
   verifyToken,
   isAuthenticated,
-  removeToken
+  removeToken,
+  getShopSlugFromPath
 } from '../services/api';
 
 // ============================================================================
@@ -163,13 +164,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('✅ Logout successful');
       
       // Redirect to home page after logout
-      window.location.href = '/';
+      const shopSlug = getShopSlugFromPath();
+      window.location.href = shopSlug ? `/${shopSlug}` : '/';
     } catch (error) {
       console.error('❌ Logout failed:', error);
       // Even if API call fails, clear local state
       setUser(null);
       // Still redirect to home page
-      window.location.href = '/';
+      const shopSlug = getShopSlugFromPath();
+      window.location.href = shopSlug ? `/${shopSlug}` : '/';
     } finally {
       setIsLoading(false);
     }

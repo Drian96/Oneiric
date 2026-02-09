@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { buildShopPath } from '../services/api';
+import { useShop } from '../contexts/ShopContext';
 import furnitureLogo from '../assets/AR-Furniture_Logo.png';
 import shopName from '../assets/NAME.png'
 
@@ -17,6 +19,7 @@ const Header = () => {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { isAuthenticated, user, logout } = useAuth();
+  const { shop } = useShop();
   const { notifications, unreadCount, markAsRead, deleteNotification } = useNotifications();
   const [shouldPulseCart, setShouldPulseCart] = useState(false);
   const prevQuantityRef = useRef(totalQuantity);
@@ -43,10 +46,10 @@ const Header = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       // Navigate to products page with search query
-      window.location.href = `/products?q=${encodeURIComponent(searchQuery.trim())}`;
+      window.location.href = buildShopPath(`products?q=${encodeURIComponent(searchQuery.trim())}`);
     } else {
       // Navigate to products page without search query
-      window.location.href = '/products';
+      window.location.href = buildShopPath('products');
     }
   };
 
@@ -140,9 +143,9 @@ const Header = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Desktop Header */}
         <div className="hidden md:flex items-center justify-between h-16">
-          <Link to="/">
+          <Link to={buildShopPath('')}>
             <div className="flex items-center">
-              <img src={furnitureLogo} alt="Furniture Logo" className="h-12 mt-2" />
+              <img src={shop?.logo_url || furnitureLogo} alt="Furniture Logo" className="h-12 mt-2" />
               <img src={shopName} alt="Shop Name" className="h-10 mt-2 ml-2" />
             </div>
           </Link>
@@ -274,7 +277,7 @@ const Header = () => {
                     <span className="text-dgreen font-bold">₱{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                   </div>
                   <Link 
-                    to="/cart" 
+                    to={buildShopPath('cart')} 
                     className="block mt-4 w-full text-center bg-dgreen text-cream px-4 py-2 rounded-lg hover:bg-lgreen cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -302,7 +305,7 @@ const Header = () => {
                 {showProfileDropdown && (
                   <div className="absolute right-0 top-full w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 mt-2">
                     <Link
-                      to="/profile"
+                      to={buildShopPath('profile')}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -327,7 +330,7 @@ const Header = () => {
               </div>
             ) : (
               <Link
-                to="/login"
+                to={buildShopPath('login')}
                 className="text-dgreen hover:text-lgreen transition-colors font-medium px-4 py-2 border border-lgreen rounded-lg"
               >
                 Login
@@ -340,8 +343,8 @@ const Header = () => {
         <div className="md:hidden flex items-center justify-between h-16">
           {/* Left side - Logo and Search */}
           <div className="flex items-center space-x-3 flex-1">
-            <Link to="/">
-              <img src={furnitureLogo} alt="Furniture Logo" className="h-10" />
+            <Link to={buildShopPath('')}>
+              <img src={shop?.logo_url || furnitureLogo} alt="Furniture Logo" className="h-10" />
             </Link>
             
             {/* Mobile Search - Show only when search icon is clicked */}
@@ -486,7 +489,7 @@ const Header = () => {
                     <span className="text-dgreen font-semibold text-sm">Total:</span>
                     <span className="text-dgreen font-bold text-sm">₱{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                   </div>
-                  <Link to="/cart" className="block mt-3 w-full text-center bg-dgreen text-cream px-3 py-2 rounded-lg hover:bg-lgreen cursor-pointer text-sm">
+                  <Link to={buildShopPath('cart')} className="block mt-3 w-full text-center bg-dgreen text-cream px-3 py-2 rounded-lg hover:bg-lgreen cursor-pointer text-sm">
                     View Cart
                   </Link>
                 </div>
@@ -508,7 +511,7 @@ const Header = () => {
                 {showProfileDropdown && (
                   <div className="absolute right-0 top-full w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 mt-2">
                     <Link
-                      to="/profile"
+                      to={buildShopPath('profile')}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       onClick={() => setShowProfileDropdown(false)}
                     >
@@ -528,7 +531,7 @@ const Header = () => {
               </div>
             ) : (
               <Link
-                to="/login"
+                to={buildShopPath('login')}
                 className="text-dgreen hover:text-lgreen transition-colors font-medium px-3 py-2 border border-lgreen rounded-lg text-sm"
               >
                 Login

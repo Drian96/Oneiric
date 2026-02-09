@@ -11,25 +11,27 @@ const getNotificationService = () => import('./notifications').then(m => m.notif
 
 export const orderService = {
   // Create a new order with items
-  async createOrder(orderData: CreateOrderData): Promise<Order> {
+  async createOrder(orderData: CreateOrderData, shopId?: string): Promise<Order> {
     try {
       console.log('📦 Creating order:', orderData);
       
       // Create the order
+      const payload = shopId ? { ...orderData, shop_id: shopId } : orderData;
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert([{
-          user_id: orderData.user_id,
-          first_name: orderData.first_name,
-          last_name: orderData.last_name,
-          email: orderData.email,
-          phone: orderData.phone,
-          address: orderData.address,
-          city: orderData.city,
-          postal_code: orderData.postal_code,
-          notes: orderData.notes,
-          payment_method: orderData.payment_method,
-          total_amount: orderData.total_amount
+          user_id: payload.user_id,
+          first_name: payload.first_name,
+          last_name: payload.last_name,
+          email: payload.email,
+          phone: payload.phone,
+          address: payload.address,
+          city: payload.city,
+          postal_code: payload.postal_code,
+          notes: payload.notes,
+          payment_method: payload.payment_method,
+          total_amount: payload.total_amount,
+          ...(shopId ? { shop_id: shopId } : {})
         }])
         .select()
         .single();
@@ -46,7 +48,8 @@ export const orderService = {
         order_id: order.id,
         product_id: item.product_id,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        ...(shopId ? { shop_id: shopId } : {})
       }));
 
       const { error: itemsError } = await supabase
@@ -86,13 +89,19 @@ export const orderService = {
   },
 
   // Get orders for a user
-  async getUserOrders(userId: number): Promise<Order[]> {
+  async getUserOrders(userId: number, shopId?: string): Promise<Order[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Failed to fetch orders: ${error.message}`);
@@ -106,24 +115,35 @@ export const orderService = {
   },
 
   // Get order with items
-  async getOrderWithItems(orderId: number): Promise<{ order: Order; items: OrderItem[] }> {
+  async getOrderWithItems(orderId: number, shopId?: string): Promise<{ order: Order; items: OrderItem[] }> {
     try {
       // Get order
-      const { data: order, error: orderError } = await supabase
+      let orderQuery = supabase
         .from('orders')
         .select('*')
-        .eq('id', orderId)
-        .single();
+        .eq('id', orderId);
+
+      if (shopId) {
+        orderQuery = orderQuery.eq('shop_id', shopId);
+      }
+
+      const { data: order, error: orderError } = await orderQuery.single();
 
       if (orderError) {
         throw new Error(`Failed to fetch order: ${orderError.message}`);
       }
 
       // Get order items
-      const { data: items, error: itemsError } = await supabase
+      let itemsQuery = supabase
         .from('order_items')
         .select('*')
         .eq('order_id', orderId);
+
+      if (shopId) {
+        itemsQuery = itemsQuery.eq('shop_id', shopId);
+      }
+
+      const { data: items, error: itemsError } = await itemsQuery;
 
       if (itemsError) {
         throw new Error(`Failed to fetch order items: ${itemsError.message}`);
@@ -140,12 +160,18 @@ export const orderService = {
   },
 
   // Update order status
-  async updateOrderStatus(orderId: number, status: Order['status']): Promise<void> {
+  async updateOrderStatus(orderId: number, status: Order['status'], shopId?: string): Promise<void> {
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('orders')
         .update({ status })
         .eq('id', orderId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { error } = await query;
 
       if (error) {
         throw new Error(`Failed to update order status: ${error.message}`);
@@ -157,12 +183,18 @@ export const orderService = {
   },
 
   // Get all orders (for admin)
-  async getAllOrders(): Promise<Order[]> {
+  async getAllOrders(shopId?: string): Promise<Order[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Failed to fetch orders: ${error.message}`);
@@ -176,30 +208,41 @@ export const orderService = {
   },
 
   // Get order with items and product details (for admin)
-  async getOrderWithDetails(orderId: number): Promise<{
+  async getOrderWithDetails(orderId: number, shopId?: string): Promise<{
     order: Order;
     items: (OrderItem & { product_name: string; product_image?: string })[];
   }> {
     try {
       // Get order
-      const { data: order, error: orderError } = await supabase
+      let orderQuery = supabase
         .from('orders')
         .select('*')
-        .eq('id', orderId)
-        .single();
+        .eq('id', orderId);
+
+      if (shopId) {
+        orderQuery = orderQuery.eq('shop_id', shopId);
+      }
+
+      const { data: order, error: orderError } = await orderQuery.single();
 
       if (orderError) {
         throw new Error(`Failed to fetch order: ${orderError.message}`);
       }
 
       // Get order items with product details
-      const { data: items, error: itemsError } = await supabase
+      let itemsQuery = supabase
         .from('order_items')
         .select(`
           *,
           products!inner(name)
         `)
         .eq('order_id', orderId);
+
+      if (shopId) {
+        itemsQuery = itemsQuery.eq('shop_id', shopId);
+      }
+
+      const { data: items, error: itemsError } = await itemsQuery;
 
       if (itemsError) {
         throw new Error(`Failed to fetch order items: ${itemsError.message}`);
@@ -237,12 +280,18 @@ export const orderService = {
   },
 
   // Delete a single order (order_items will be deleted automatically due to CASCADE)
-  async deleteOrder(orderId: number): Promise<void> {
+  async deleteOrder(orderId: number, shopId?: string): Promise<void> {
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('orders')
         .delete()
         .eq('id', orderId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { error } = await query;
 
       if (error) {
         throw new Error(`Failed to delete order: ${error.message}`);
@@ -254,18 +303,24 @@ export const orderService = {
   },
 
   // Delete completed orders (delivered or cancelled) older than retention days
-  async deleteCompletedOrders(retentionDays: number = 30): Promise<number> {
+  async deleteCompletedOrders(retentionDays: number = 30, shopId?: string): Promise<number> {
     try {
       const retentionDate = new Date();
       retentionDate.setDate(retentionDate.getDate() - retentionDays);
       const retentionDateString = retentionDate.toISOString();
 
       // Get orders to delete
-      const { data: ordersToDelete, error: fetchError } = await supabase
+      let fetchQuery = supabase
         .from('orders')
         .select('id')
         .in('status', ['delivered', 'cancelled'])
         .lt('updated_at', retentionDateString);
+
+      if (shopId) {
+        fetchQuery = fetchQuery.eq('shop_id', shopId);
+      }
+
+      const { data: ordersToDelete, error: fetchError } = await fetchQuery;
 
       if (fetchError) {
         throw new Error(`Failed to fetch orders to delete: ${fetchError.message}`);
@@ -278,10 +333,16 @@ export const orderService = {
       const orderIds = ordersToDelete.map(order => order.id);
 
       // Delete orders (order_items will be deleted automatically due to CASCADE)
-      const { error: deleteError } = await supabase
+      let deleteQuery = supabase
         .from('orders')
         .delete()
         .in('id', orderIds);
+
+      if (shopId) {
+        deleteQuery = deleteQuery.eq('shop_id', shopId);
+      }
+
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         throw new Error(`Failed to delete orders: ${deleteError.message}`);

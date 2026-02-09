@@ -14,6 +14,7 @@ const {
 // Import authentication middleware
 const { authenticateToken, requireStaff } = require('../middleware/auth');
 const { auditLogger } = require('../middleware/auditLogger');
+const { resolveShop, requireShop } = require('../middleware/tenant');
 
 // ============================================================================
 // PRODUCT ROUTES
@@ -45,7 +46,7 @@ const { auditLogger } = require('../middleware/auditLogger');
  *   ]
  * }
  */
-router.get('/', getProducts);
+router.get('/', resolveShop, requireShop, getProducts);
 
 /**
  * GET /api/products/:id
@@ -70,7 +71,7 @@ router.get('/', getProducts);
  *   }
  * }
  */
-router.get('/:id', getProductById);
+router.get('/:id', resolveShop, requireShop, getProductById);
 
 /**
  * POST /api/products
@@ -102,7 +103,7 @@ router.get('/:id', getProductById);
  * - authenticateToken: Verifies JWT token
  * - requireStaff: Ensures only staff can create products
  */
-router.post('/', authenticateToken, requireStaff, auditLogger('Create Product', 'Inventory', 'Product created'), createProduct);
+router.post('/', resolveShop, requireShop, authenticateToken, requireStaff, auditLogger('Create Product', 'Inventory', 'Product created'), createProduct);
 
 /**
  * PUT /api/products/:id
@@ -134,7 +135,7 @@ router.post('/', authenticateToken, requireStaff, auditLogger('Create Product', 
  * - authenticateToken: Verifies JWT token
  * - requireStaff: Ensures only staff can update products
  */
-router.put('/:id', authenticateToken, requireStaff, auditLogger('Update Product', 'Inventory', 'Product updated'), updateProduct);
+router.put('/:id', resolveShop, requireShop, authenticateToken, requireStaff, auditLogger('Update Product', 'Inventory', 'Product updated'), updateProduct);
 
 /**
  * DELETE /api/products/:id
@@ -153,7 +154,7 @@ router.put('/:id', authenticateToken, requireStaff, auditLogger('Update Product'
  * - authenticateToken: Verifies JWT token
  * - requireStaff: Ensures only staff can delete products
  */
-router.delete('/:id', authenticateToken, requireStaff, auditLogger('Delete Product', 'Inventory', 'Product deleted'), deleteProduct);
+router.delete('/:id', resolveShop, requireShop, authenticateToken, requireStaff, auditLogger('Delete Product', 'Inventory', 'Product deleted'), deleteProduct);
 
 /**
  * PUT /api/products/:id/stock
@@ -179,6 +180,6 @@ router.delete('/:id', authenticateToken, requireStaff, auditLogger('Delete Produ
  * - authenticateToken: Verifies JWT token
  * - requireStaff: Ensures only staff can update stock
  */
-router.put('/:id/stock', authenticateToken, requireStaff, auditLogger('Update Stock', 'Inventory', 'Stock adjusted'), updateStock);
+router.put('/:id/stock', resolveShop, requireShop, authenticateToken, requireStaff, auditLogger('Update Stock', 'Inventory', 'Stock adjusted'), updateStock);
 
 module.exports = router;

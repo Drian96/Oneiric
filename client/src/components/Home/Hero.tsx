@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { buildShopPath } from "../../services/api";
 
 const Hero = () => {
   return (
@@ -21,11 +22,11 @@ const Hero = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/products" className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
+              <Link to={buildShopPath('products')} className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
                 Shop Now!
               </Link>
               
-              <Link to="/admin"
+              <Link to={buildShopPath('admin')}
                className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
                 Shop Collection
               </Link>

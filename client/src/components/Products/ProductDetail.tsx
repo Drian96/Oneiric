@@ -6,6 +6,8 @@ import { productService, reviewService, type Product as DbProduct, type ProductI
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCartAnimation } from '../../contexts/CartAnimationContext';
+import { buildShopPath } from '../../services/api';
+import { useShop } from '../../contexts/ShopContext';
 import { isInWishlist, toggleWishlist } from '../../utils/wishlist';
 import { is3DModel } from '../../utils/modelUtils';
 import ARViewer from '../AR/ARViewer';
@@ -25,14 +27,15 @@ const ProductDetail = () => {
   const [shareSuccess, setShareSuccess] = useState(false);
   const { addItem } = useCart();
   const { isAuthenticated } = useAuth();
+  const { shop } = useShop();
   const { triggerAnimation } = useCartAnimation();
   const navigate = useNavigate();
   const addToCartButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const load = async () => {
-      if (!id) return;
-      const p = await productService.getProductById(id);
+      if (!id || !shop?.id) return;
+      const p = await productService.getProductById(id, shop.id);
       if (p) {
         setProduct(p);
         setImages(await productService.getProductImages(p.id));
@@ -44,8 +47,8 @@ const ProductDetail = () => {
         setLoadingReviews(true);
         try {
           const [reviewsData, statsData] = await Promise.all([
-            reviewService.getProductReviews(p.id),
-            reviewService.getProductReviewStats(p.id)
+            reviewService.getProductReviews(p.id, shop.id),
+            reviewService.getProductReviewStats(p.id, shop.id)
           ]);
           setReviews(reviewsData);
           setReviewStats(statsData);
@@ -57,7 +60,7 @@ const ProductDetail = () => {
       }
     };
     load();
-  }, [id]);
+  }, [id, shop?.id]);
 
   const productImages = useMemo(() => images.map(i => i.image_url), [images]);
 
@@ -88,7 +91,7 @@ const ProductDetail = () => {
   const handleWishlistToggle = () => {
     if (!product) return;
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate(buildShopPath('login'));
       return;
     }
     const newState = toggleWishlist(product.id);
@@ -98,7 +101,7 @@ const ProductDetail = () => {
   const handleShare = async () => {
     if (!product) return;
     
-    const productUrl = `${window.location.origin}/products/${product.id}`;
+    const productUrl = `${window.location.origin}${buildShopPath(`products/${product.id}`)}`;
     const shareData = {
       title: product.name,
       text: `Check out ${product.name} - ₱${product.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
@@ -135,7 +138,7 @@ const ProductDetail = () => {
   const handleAddToCart = () => {
     if (!product) return;
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate(buildShopPath('login'));
       return;
     }
     
@@ -170,7 +173,7 @@ const ProductDetail = () => {
   const handleBuyNow = () => {
     if (!product) return;
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate(buildShopPath('login'));
       return;
     }
     
@@ -195,13 +198,13 @@ const ProductDetail = () => {
     // Add item to cart and redirect to checkout
     const firstImage = images[0]?.image_url;
     addItem({ productId: product.id, name: product.name, price: product.price, imageUrl: firstImage }, quantity);
-    navigate('/checkout');
+    navigate(buildShopPath('checkout'));
   };
 
   const handleTryAR = () => {
     if (!product) return;
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate(buildShopPath('login'));
       return;
     }
     setShowAR(true);
@@ -212,7 +215,7 @@ const ProductDetail = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Back Button */}
         <Link 
-          to="/products" 
+          to={buildShopPath('products')} 
           className="inline-flex items-center text-dgreen hover:text-lgreen mb-8 transition-colors"
         >
           <ArrowLeft className="w-5 h-5 mr-2" />

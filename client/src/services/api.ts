@@ -5,6 +5,8 @@
 
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+const DEFAULT_SHOP_SLUG = import.meta.env.VITE_DEFAULT_SHOP_SLUG || '';
+const RESERVED_SLUGS = new Set(['platform']);
 
 // ============================================================================
 // TYPES AND INTERFACES
@@ -113,6 +115,44 @@ export interface AuthResponse {
   token: string;
 }
 
+// Shop interface (public)
+export interface Shop {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'active' | 'suspended' | 'pending';
+  logo_url?: string | null;
+  theme_primary?: string | null;
+  theme_secondary?: string | null;
+  theme_accent?: string | null;
+}
+
+export interface UpdateShopBrandingRequest {
+  logo_url?: string | null;
+  theme_primary?: string | null;
+  theme_secondary?: string | null;
+  theme_accent?: string | null;
+}
+
+export interface RegisterShopRequest {
+  shop_name: string;
+  shop_slug: string;
+  admin_first_name: string;
+  admin_last_name: string;
+  admin_email: string;
+  admin_password: string;
+  admin_phone?: string;
+}
+
+export interface RegisterShopResponse {
+  shop: Shop;
+  admin_user: {
+    id: number;
+    email: string;
+    role: 'admin';
+  };
+}
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // Helper functions for API communication
@@ -158,6 +198,28 @@ const getAuthHeader = (): { Authorization: string } | {} => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+export const getShopSlugFromPath = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const first = parts.length > 0 ? parts[0].toLowerCase() : '';
+  if (!first) return DEFAULT_SHOP_SLUG || null;
+  if (RESERVED_SLUGS.has(first)) return null;
+  return first;
+};
+
+export const buildShopPath = (path: string): string => {
+  const slug = getShopSlugFromPath();
+  const normalized = path.replace(/^\/+/, '');
+  if (!slug) return `/${normalized}`;
+  if (!normalized) return `/${slug}`;
+  return `/${slug}/${normalized}`;
+};
+
+const getShopHeader = (): { 'X-Shop-Slug': string } | {} => {
+  const slug = getShopSlugFromPath();
+  return slug ? { 'X-Shop-Slug': slug } : {};
+};
+
 /**
  * Make HTTP request to API
  * @param endpoint - API endpoint (without base URL)
@@ -174,6 +236,7 @@ const apiRequest = async <T>(
       headers: {
         'Content-Type': 'application/json',
         ...getAuthHeader(),
+        ...getShopHeader(),
         ...options.headers,
       },
       ...options,
@@ -404,6 +467,34 @@ export const oauthCallback = async (
 };
 
 // ============================================================================
+// SHOP API FUNCTIONS
+// ============================================================================
+
+export const getShopBySlug = async (slug: string): Promise<Shop> => {
+  const response = await apiRequest<Shop>(`/shops/slug/${slug}`);
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to load shop');
+};
+
+export const updateShopBranding = async (payload: UpdateShopBrandingRequest): Promise<Shop> => {
+  const response = await apiRequest<Shop>('/shops/branding', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to update shop branding');
+};
+
+export const registerShop = async (payload: RegisterShopRequest): Promise<RegisterShopResponse> => {
+  const response = await apiRequest<RegisterShopResponse>('/shops/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to register shop');
+};
+
+// ============================================================================
 // HEALTH CHECK
 // Function to check if API is running
 // ============================================================================
@@ -449,6 +540,11 @@ export default {
   
   // Health check
   checkApiHealth,
+
+  // Shop
+  getShopBySlug,
+  updateShopBranding,
+  registerShop,
 }; 
 
 // =========================

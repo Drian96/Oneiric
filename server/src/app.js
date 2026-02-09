@@ -64,7 +64,7 @@ app.use(cors({
   },
   credentials: true, // Allow cookies and authentication headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allowed HTTP methods
-  allowedHeaders: ['Content-Type', 'Authorization'] // Allowed headers
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Slug'] // Allowed headers
 }));
 
 // Request logging middleware - logs all HTTP requests
@@ -120,6 +120,10 @@ app.use(`${API_PREFIX}/users`, userRoutes);
 
 // Address management routes - authenticated users
 app.use(`${API_PREFIX}/addresses`, addressRoutes);
+
+// Shop resolution routes (public)
+const shopRoutes = require('./routes/shops');
+app.use(`${API_PREFIX}/shops`, shopRoutes);
 
 // Product management routes
 const productRoutes = require('./routes/products');

@@ -1,6 +1,7 @@
 import React from 'react';
 import SignUpBG from '../assets/SignUpBG.jpg';
 import { Link } from 'react-router-dom';
+import { buildShopPath } from '../services/api';
 
 const Terms: React.FC = () => {
   return (
@@ -25,7 +26,7 @@ const Terms: React.FC = () => {
           <p className="mb-2">We may update these terms from time to time. Continued use of the service constitutes acceptance of the updated terms.</p>
         </div>
         <div className="text-center mt-6">
-          <Link to="/signup" className="text-dgreen hover:underline">Back to Sign Up</Link>
+          <Link to={buildShopPath('signup')} className="text-dgreen hover:underline">Back to Sign Up</Link>
         </div>
       </div>
     </div>

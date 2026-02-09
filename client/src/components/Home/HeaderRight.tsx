@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { buildShopPath } from '../../services/api';
+import { useShop } from '../../contexts/ShopContext';
 import furnitureLogo from '../../assets/AR-Furniture_Logo.png';
 import shopName from '../../assets/NAME.png';
 
 const Header = () => {
+  const { shop } = useShop();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => {
@@ -25,7 +28,7 @@ const Header = () => {
           {/* Logo */}
           <div className="flex items-center">
             <img 
-              src={furnitureLogo} 
+              src={shop?.logo_url || furnitureLogo} 
               alt="Furniture Logo" 
               className="h-20 mt-2"
             />
@@ -50,7 +53,7 @@ const Header = () => {
           </nav>
 
           <Link 
-              to="/login"
+              to={buildShopPath('login')}
               className="hidden md:block border hover:bg-lgreen hover:text-dgreen transition-all duration-200 rounded-xl px-6 py-2 font-medium text-m"
             >
               Login
@@ -88,7 +91,7 @@ const Header = () => {
               ))}
               <div className="px-3 py-2">
                 <Link 
-                  to="/login" 
+                  to={buildShopPath('login')} 
                   className="border border-header-text text-header-text hover:bg-header-text hover:text-header-background transition-all duration-200 rounded-full px-6 py-2 font-medium text-sm w-full block text-center"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >

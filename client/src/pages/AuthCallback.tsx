@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { handleOAuthCallback } from '../services/supabase/auth';
 import { oauthCallback as apiOAuthCallback } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { buildShopPath } from '../services/api';
 import { signOut as supabaseSignOut } from '../services/supabase/auth';
 
 const AuthCallback: React.FC = () => {
@@ -92,9 +93,9 @@ const AuthCallback: React.FC = () => {
           const role = authResponse.user.role;
           setTimeout(() => {
             if (role === 'admin' || role === 'manager' || role === 'staff') {
-              navigate('/admin');
+              navigate(buildShopPath('admin'));
             } else {
-              navigate('/products');
+              navigate(buildShopPath('products'));
             }
           }, 1500);
         } catch (apiError: any) {
@@ -106,7 +107,7 @@ const AuthCallback: React.FC = () => {
             setError('An account with this email already exists. Please sign in with your password instead.');
             setStatus('error');
             setTimeout(() => {
-              navigate('/login');
+              navigate(buildShopPath('login'));
             }, 3000);
             return;
           }
@@ -116,7 +117,7 @@ const AuthCallback: React.FC = () => {
           setError(apiError.message || 'Failed to complete authentication');
           setStatus('error');
           setTimeout(() => {
-            navigate('/login');
+            navigate(buildShopPath('login'));
           }, 3000);
         }
       } catch (err: any) {
@@ -133,7 +134,7 @@ const AuthCallback: React.FC = () => {
         
         // Redirect to login after error
         setTimeout(() => {
-          navigate('/login');
+          navigate(buildShopPath('login'));
         }, 3000);
       }
     };

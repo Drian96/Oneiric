@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { buildShopPath } from '../services/api';
 
 const NotFound: React.FC = () => {
   return (
@@ -10,7 +11,7 @@ const NotFound: React.FC = () => {
         Oops! The page you're looking for doesn't exist.
       </p>
       <Link
-        to="/"
+        to={buildShopPath('')}
         className="bg-lgreen hover:bg-dgreen text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-300 focus:ring-opacity-75"
       >
         Go to Homepage

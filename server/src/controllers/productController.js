@@ -13,6 +13,7 @@ const { QueryTypes } = require('sequelize');
 exports.getProducts = async (req, res) => {
   try {
     console.log('🔄 Fetching products...');
+    const shopId = req.shop?.id;
 
     const products = await sequelize.query(
       `SELECT 
@@ -29,8 +30,9 @@ exports.getProducts = async (req, res) => {
         created_at,
         updated_at
       FROM public.products 
+      WHERE shop_id = :shop_id
       ORDER BY created_at DESC`,
-      { type: QueryTypes.SELECT }
+      { type: QueryTypes.SELECT, replacements: { shop_id: shopId } }
     );
 
     // Calculate status based on quantity
@@ -63,6 +65,7 @@ exports.getProducts = async (req, res) => {
 exports.getProductById = async (req, res) => {
   try {
     const { id } = req.params;
+    const shopId = req.shop?.id;
     console.log(`🔄 Fetching product ${id}...`);
 
     const [product] = await sequelize.query(
@@ -80,10 +83,10 @@ exports.getProductById = async (req, res) => {
         created_at,
         updated_at
       FROM public.products 
-      WHERE id = :id`,
+      WHERE id = :id AND shop_id = :shop_id`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 
@@ -130,6 +133,7 @@ exports.createProduct = async (req, res) => {
       min_stock,
       description
     } = req.body;
+    const shopId = req.shop?.id;
 
     console.log('🔄 Creating new product...', { name, category, supplier, price, quantity });
 
@@ -151,12 +155,13 @@ exports.createProduct = async (req, res) => {
 
     const result = await sequelize.query(
       `INSERT INTO public.products 
-       (name, code, category, supplier, price, quantity, min_stock, description, created_at, updated_at)
-       VALUES (:name, :code, :category, :supplier, :price, :quantity, :min_stock, :description, NOW(), NOW())
+       (shop_id, name, code, category, supplier, price, quantity, min_stock, description, created_at, updated_at)
+       VALUES (:shop_id, :name, :code, :category, :supplier, :price, :quantity, :min_stock, :description, NOW(), NOW())
        RETURNING *`,
       { 
         type: QueryTypes.SELECT,
         replacements: {
+          shop_id: shopId,
           name,
           code: code || null,
           category,
@@ -206,6 +211,7 @@ exports.createProduct = async (req, res) => {
 exports.updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
+    const shopId = req.shop?.id;
     const {
       name,
       code,
@@ -231,12 +237,13 @@ exports.updateProduct = async (req, res) => {
          min_stock = :min_stock,
          description = :description,
          updated_at = NOW()
-       WHERE id = :id
+       WHERE id = :id AND shop_id = :shop_id
        RETURNING *`,
       { 
         type: QueryTypes.SELECT,
         replacements: {
           id,
+          shop_id: shopId,
           name,
           code: code || null,
           category,
@@ -284,13 +291,14 @@ exports.updateProduct = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
+    const shopId = req.shop?.id;
     console.log(`🔄 Deleting product ${id}...`);
 
     const result = await sequelize.query(
-      `DELETE FROM public.products WHERE id = :id`,
+      `DELETE FROM public.products WHERE id = :id AND shop_id = :shop_id`,
       { 
         type: QueryTypes.DELETE,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 
@@ -318,6 +326,7 @@ exports.updateStock = async (req, res) => {
   try {
     const { id } = req.params;
     const { quantity } = req.body;
+    const shopId = req.shop?.id;
 
     console.log(`🔄 Updating stock for product ${id}...`);
 
@@ -331,11 +340,11 @@ exports.updateStock = async (req, res) => {
     const [updatedProduct] = await sequelize.query(
       `UPDATE public.products 
        SET quantity = :quantity, updated_at = NOW()
-       WHERE id = :id
+       WHERE id = :id AND shop_id = :shop_id
        RETURNING *`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id, quantity }
+        replacements: { id, quantity, shop_id: shopId }
       }
     );
 

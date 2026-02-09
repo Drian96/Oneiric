@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SignUpBG from '../assets/SignUpBG.jpg';
 import { Mail, Hash, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { sendVerificationCode, verifyCode, resetPassword } from '../services/api';
+import { sendVerificationCode, verifyCode, resetPassword, buildShopPath } from '../services/api';
 
 type Step = 1 | 2 | 3;
 
@@ -100,7 +100,7 @@ const ForgotPassword: React.FC = () => {
       const res = await resetPassword(email, code, newPassword);
       if (!res.success) throw new Error(res.message || 'Failed to reset password');
       setSuccessMsg('Password reset successfully. You can now log in.');
-      setTimeout(() => navigate('/login'), 1500);
+      setTimeout(() => navigate(buildShopPath('login')), 1500);
     } catch (err: any) {
       setError(err.message || 'Network error');
     } finally {
@@ -116,7 +116,7 @@ const ForgotPassword: React.FC = () => {
       </div>
       <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-auto">
         <div className="flex items-center mb-4">
-          <Link to="/login" className="text-dgreen hover:underline flex items-center">
+          <Link to={buildShopPath('login')} className="text-dgreen hover:underline flex items-center">
             <ArrowLeft className="mr-1" size={18} /> Back
           </Link>
         </div>

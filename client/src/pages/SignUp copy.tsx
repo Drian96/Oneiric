@@ -4,6 +4,7 @@ import GoogleLogo from '../assets/google.jpg';
 import { twMerge } from 'tailwind-merge';
 import SignUpBG from '../assets/SignUpBG.jpg';
 import { Link } from 'react-router-dom';
+import { buildShopPath } from '../services/api';
 
 const SignUp: React.FC = () => {
   // State for input fields
@@ -143,7 +144,7 @@ const SignUp: React.FC = () => {
         <div className="text-center mt-6 text-gray-600">
           Already have an account?{' '}
           {/* This link should ideally navigate to your login modal or dedicated login page */}
-          <Link to="/" className="text-gray-900 hover:text-dgreen hover:underline font-medium transition-colors duration-200">
+          <Link to={buildShopPath('')} className="text-gray-900 hover:text-dgreen hover:underline font-medium transition-colors duration-200">
             Log in
           </Link>
         </div>

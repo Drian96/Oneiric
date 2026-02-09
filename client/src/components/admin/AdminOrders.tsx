@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search, X, Eye, CheckCircle, XCircle, Truck, Package, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { orderService, Order } from '../../services/supabase';
+import { useShop } from '../../contexts/ShopContext';
 
 // Orders management component for admin
 const AdminOrders = () => {
+  const { shop } = useShop();
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,7 @@ const AdminOrders = () => {
   // Load orders on component mount
   useEffect(() => {
     loadOrders();
-  }, []);
+  }, [shop?.id]);
 
   // Filter orders based on search and status
   useEffect(() => {
@@ -56,7 +58,7 @@ const AdminOrders = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const allOrders = await orderService.getAllOrders();
+      const allOrders = await orderService.getAllOrders(shop?.id);
       setOrders(allOrders);
     } catch (error) {
       console.error('Failed to load orders:', error);
@@ -68,7 +70,7 @@ const AdminOrders = () => {
   const handleStatusUpdate = async (orderId: number, newStatus: Order['status']) => {
     try {
       setUpdatingStatus(orderId);
-      await orderService.updateOrderStatus(orderId, newStatus);
+      await orderService.updateOrderStatus(orderId, newStatus, shop?.id);
       await loadOrders(); // Refresh orders
       setShowNotification({ type: 'success', message: 'Order status updated successfully.' });
     } catch (error) {
@@ -88,7 +90,7 @@ const AdminOrders = () => {
   const loadOrderItems = async (orderId: number) => {
     try {
       setLoadingOrderItems(true);
-      const orderDetails = await orderService.getOrderWithDetails(orderId);
+      const orderDetails = await orderService.getOrderWithDetails(orderId, shop?.id);
       setOrderItems(orderDetails.items);
     } catch (error) {
       console.error('Failed to load order items:', error);
@@ -148,10 +150,10 @@ const AdminOrders = () => {
 
       if (action === 'approve') {
         // Update order status to cancelled (refunded)
-        await orderService.updateOrderStatus(request.order.id, 'cancelled');
+        await orderService.updateOrderStatus(request.order.id, 'cancelled', shop?.id);
       } else {
         // Update order status back to delivered
-        await orderService.updateOrderStatus(request.order.id, 'delivered');
+        await orderService.updateOrderStatus(request.order.id, 'delivered', shop?.id);
       }
       
       // Refresh orders and return requests
@@ -177,7 +179,7 @@ const AdminOrders = () => {
 
     try {
       setDeletingOrder(orderToDelete.id);
-      await orderService.deleteOrder(orderToDelete.id);
+      await orderService.deleteOrder(orderToDelete.id, shop?.id);
       await loadOrders(); // Refresh orders
       setShowDeleteModal(false);
       setOrderToDelete(null);
@@ -199,7 +201,7 @@ const AdminOrders = () => {
   const confirmCleanup = async () => {
     try {
       setCleaningUp(true);
-      const deletedCount = await orderService.deleteCompletedOrders(selectedRetentionDays);
+      const deletedCount = await orderService.deleteCompletedOrders(selectedRetentionDays, shop?.id);
       await loadOrders(); // Refresh orders
       setShowCleanupModal(false);
       setShowNotification({ 

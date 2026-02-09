@@ -14,6 +14,7 @@ export const reviewService = {
     user_id: number;
     rating: number;
     comment?: string;
+    shop_id?: string;
   }): Promise<ProductReview> {
     try {
       const { data, error } = await supabase
@@ -34,9 +35,9 @@ export const reviewService = {
   },
 
   // Get reviews for a specific product
-  async getProductReviews(productId: string): Promise<ProductReview[]> {
+  async getProductReviews(productId: string, shopId?: string): Promise<ProductReview[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('product_reviews')
         .select(`
           *,
@@ -45,6 +46,12 @@ export const reviewService = {
         .eq('product_id', productId)
         .eq('status', 'approved')
         .order('created_at', { ascending: false });
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Failed to fetch product reviews: ${error.message}`);
@@ -58,13 +65,18 @@ export const reviewService = {
   },
 
   // Get review statistics for a product
-  async getProductReviewStats(productId: string): Promise<ProductReviewStats | null> {
+  async getProductReviewStats(productId: string, shopId?: string): Promise<ProductReviewStats | null> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('product_review_stats')
         .select('*')
-        .eq('product_id', productId)
-        .single();
+        .eq('product_id', productId);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query.single();
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -148,9 +160,9 @@ export const reviewService = {
   },
 
   // Get all reviews for admin (with user and product info)
-  async getAllReviews(): Promise<any[]> {
+  async getAllReviews(shopId?: string): Promise<any[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('product_reviews')
         .select(`
           *,
@@ -158,6 +170,12 @@ export const reviewService = {
           products!inner(name)
         `)
         .order('created_at', { ascending: false });
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Failed to fetch all reviews: ${error.message}`);

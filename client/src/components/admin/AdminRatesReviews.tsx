@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search, Star, Eye, Trash2, X, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { reviewService, ProductReview } from '../../services/supabase';
+import { useShop } from '../../contexts/ShopContext';
 
 // Rates and reviews management component for admin
 const AdminRatesReviews = () => {
+  const { shop } = useShop();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [selectedReview, setSelectedReview] = useState<any>(null);
@@ -20,12 +22,12 @@ const AdminRatesReviews = () => {
   // Load reviews on component mount
   useEffect(() => {
     loadReviews();
-  }, []);
+  }, [shop?.id]);
 
   const loadReviews = async () => {
     try {
       setLoading(true);
-      const allReviews = await reviewService.getAllReviews();
+      const allReviews = await reviewService.getAllReviews(shop?.id);
       setReviews(allReviews);
       
       // Calculate stats

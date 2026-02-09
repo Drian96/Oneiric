@@ -29,6 +29,7 @@ exports.createOrder = async (req, res) => {
       notes,
       payment_method = 'cash_on_delivery'
     } = req.body;
+    const shopId = req.shop?.id;
     
     console.log('🔄 Creating new order...');
 
@@ -56,12 +57,13 @@ exports.createOrder = async (req, res) => {
     // Create order with all required fields matching the database schema
     const [newOrder] = await sequelize.query(
       `INSERT INTO public.orders 
-       (user_id, order_number, first_name, last_name, email, phone, address, city, postal_code, notes, payment_method, status, total_amount, created_at, updated_at)
-       VALUES (:user_id, :order_number, :first_name, :last_name, :email, :phone, :address, :city, :postal_code, :notes, :payment_method, 'pending', :total_amount, NOW(), NOW())
+       (shop_id, user_id, order_number, first_name, last_name, email, phone, address, city, postal_code, notes, payment_method, status, total_amount, created_at, updated_at)
+       VALUES (:shop_id, :user_id, :order_number, :first_name, :last_name, :email, :phone, :address, :city, :postal_code, :notes, :payment_method, 'pending', :total_amount, NOW(), NOW())
        RETURNING *`,
       { 
         type: QueryTypes.SELECT,
         replacements: {
+          shop_id: shopId,
           user_id,
           order_number: orderNumber,
           first_name,
@@ -94,10 +96,10 @@ exports.createOrder = async (req, res) => {
 
       // Check if product exists and has enough stock
       const [product] = await sequelize.query(
-        `SELECT id, name, quantity FROM public.products WHERE id = :product_id`,
+        `SELECT id, name, quantity FROM public.products WHERE id = :product_id AND shop_id = :shop_id`,
         { 
           type: QueryTypes.SELECT,
-          replacements: { product_id },
+          replacements: { product_id, shop_id: shopId },
           transaction
         }
       );
@@ -121,11 +123,12 @@ exports.createOrder = async (req, res) => {
       // Create order item (order_items table doesn't have updated_at column)
       await sequelize.query(
         `INSERT INTO public.order_items 
-         (order_id, product_id, quantity, price, created_at)
-         VALUES (:order_id, :product_id, :quantity, :price, NOW())`,
+         (shop_id, order_id, product_id, quantity, price, created_at)
+         VALUES (:shop_id, :order_id, :product_id, :quantity, :price, NOW())`,
         { 
           type: QueryTypes.INSERT,
           replacements: {
+            shop_id: shopId,
             order_id: newOrder.id,
             product_id,
             quantity,
@@ -139,12 +142,13 @@ exports.createOrder = async (req, res) => {
       await sequelize.query(
         `UPDATE public.products 
          SET quantity = quantity - :quantity, updated_at = NOW()
-         WHERE id = :product_id`,
+         WHERE id = :product_id AND shop_id = :shop_id`,
         { 
           type: QueryTypes.UPDATE,
           replacements: {
             product_id,
-            quantity
+            quantity,
+            shop_id: shopId
           },
           transaction
         }
@@ -166,7 +170,8 @@ exports.createOrder = async (req, res) => {
           newOrder.order_number,
           newOrder.id,
           'pending',
-          newOrder.total_amount
+          newOrder.total_amount,
+          shopId
         ),
         createAdminOrderNotification({
           orderNumber: newOrder.order_number,
@@ -174,6 +179,7 @@ exports.createOrder = async (req, res) => {
           totalAmount: newOrder.total_amount,
           customerName,
           event: 'new_order',
+          shopId,
         }),
       ]);
     } catch (notifError) {
@@ -217,6 +223,7 @@ exports.getUserOrders = async (req, res) => {
     const { userId } = req.params;
     console.log(`🔄 Fetching orders for user ${userId}...`);
 
+    const shopId = req.shop?.id;
     const orders = await sequelize.query(
       `SELECT 
         o.id,
@@ -231,12 +238,12 @@ exports.getUserOrders = async (req, res) => {
         COUNT(oi.id) as item_count
       FROM public.orders o
       LEFT JOIN public.order_items oi ON oi.order_id = o.id
-      WHERE o.user_id = :userId
+      WHERE o.user_id = :userId AND o.shop_id = :shop_id
       GROUP BY o.id, o.order_number, o.total_amount, o.status, o.address, o.city, o.postal_code, o.created_at, o.updated_at
       ORDER BY o.created_at DESC`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { userId }
+        replacements: { userId, shop_id: shopId }
       }
     );
 
@@ -263,6 +270,7 @@ exports.getUserOrders = async (req, res) => {
 exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
+    const shopId = req.shop?.id;
     console.log(`🔄 Fetching order ${id}...`);
 
     // Get order details
@@ -284,10 +292,10 @@ exports.getOrderById = async (req, res) => {
         o.created_at,
         o.updated_at
       FROM public.orders o
-      WHERE o.id = :id`,
+      WHERE o.id = :id AND o.shop_id = :shop_id`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 
@@ -309,10 +317,10 @@ exports.getOrderById = async (req, res) => {
         p.category as product_category
       FROM public.order_items oi
       JOIN public.products p ON p.id = oi.product_id
-      WHERE oi.order_id = :id`,
+      WHERE oi.order_id = :id AND oi.shop_id = :shop_id`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id }
+        replacements: { id, shop_id: shopId }
       }
     );
 
@@ -343,6 +351,7 @@ exports.updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const shopId = req.shop?.id;
     
     console.log(`🔄 Updating order ${id} status to ${status}...`);
 
@@ -364,11 +373,11 @@ exports.updateOrderStatus = async (req, res) => {
     const [updatedOrder] = await sequelize.query(
       `UPDATE public.orders 
        SET status = :status, updated_at = NOW()
-       WHERE id = :id
+       WHERE id = :id AND shop_id = :shop_id
        RETURNING *`,
       { 
         type: QueryTypes.SELECT,
-        replacements: { id, status }
+        replacements: { id, status, shop_id: shopId }
       }
     );
 
@@ -386,7 +395,8 @@ exports.updateOrderStatus = async (req, res) => {
         updatedOrder.order_number,
         updatedOrder.id,
         status,
-        updatedOrder.total_amount
+        updatedOrder.total_amount,
+        shopId
       );
 
       // Notify admins only when the event was triggered by the customer (cancel/return)
@@ -397,6 +407,7 @@ exports.updateOrderStatus = async (req, res) => {
           totalAmount: updatedOrder.total_amount,
           customerName: `${updatedOrder.first_name} ${updatedOrder.last_name}`,
           event: status,
+          shopId,
         });
       }
     } catch (notifError) {

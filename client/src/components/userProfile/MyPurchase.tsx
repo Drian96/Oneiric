@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useShop } from '../../contexts/ShopContext';
 import { orderService, reviewService, Order } from '../../services/supabase';
 import { Package, Eye, X } from 'lucide-react';
 
 const MyPurchase = () => {
   const { user } = useAuth();
+  const { shop } = useShop();
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -40,14 +42,14 @@ const MyPurchase = () => {
       
       try {
         setIsLoading(true);
-        const userOrders = await orderService.getUserOrders(user.id);
+        const userOrders = await orderService.getUserOrders(user.id, shop?.id);
         setOrders(userOrders);
         
         // Load order items for each order
         const itemsMap: Record<number, any[]> = {};
         for (const order of userOrders) {
           try {
-            const orderDetails = await orderService.getOrderWithDetails(order.id);
+            const orderDetails = await orderService.getOrderWithDetails(order.id, shop?.id);
             itemsMap[order.id] = orderDetails.items;
           } catch (error) {
             console.error(`Failed to load items for order ${order.id}:`, error);
@@ -63,7 +65,7 @@ const MyPurchase = () => {
     };
 
     fetchOrders();
-  }, [user]);
+  }, [user, shop?.id]);
 
   // Filter orders based on active tab and search query
   const filteredOrders = orders.filter(order => {
@@ -98,7 +100,7 @@ const MyPurchase = () => {
   const loadOrderItems = async (orderId: number) => {
     try {
       setLoadingOrderItems(true);
-      const orderDetails = await orderService.getOrderWithDetails(orderId);
+      const orderDetails = await orderService.getOrderWithDetails(orderId, shop?.id);
       setOrderItems(orderDetails.items);
     } catch (error) {
       console.error('Failed to load order items:', error);
@@ -113,9 +115,9 @@ const MyPurchase = () => {
     if (!actionOrder) return;
     
     try {
-      await orderService.updateOrderStatus(actionOrder.id, 'cancelled');
+      await orderService.updateOrderStatus(actionOrder.id, 'cancelled', shop?.id);
       // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id);
+      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
       setOrders(userOrders);
       setShowCancelConfirm(false);
       setActionOrder(null);
@@ -130,9 +132,9 @@ const MyPurchase = () => {
     if (!actionOrder) return;
     
     try {
-      await orderService.updateOrderStatus(actionOrder.id, 'completed');
+      await orderService.updateOrderStatus(actionOrder.id, 'completed', shop?.id);
       // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id);
+      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
       setOrders(userOrders);
       setShowOrderReceivedConfirm(false);
       setActionOrder(null);
@@ -148,9 +150,9 @@ const MyPurchase = () => {
     
     try {
       // Update order status to return_refund
-      await orderService.updateOrderStatus(actionOrder.id, 'return_refund');
+      await orderService.updateOrderStatus(actionOrder.id, 'return_refund', shop?.id);
       // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id);
+      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
       setOrders(userOrders);
       setShowReturnRequestConfirm(false);
       setActionOrder(null);
@@ -169,7 +171,7 @@ const MyPurchase = () => {
     
     try {
       // Get order items to create reviews for each product
-      const orderDetails = await orderService.getOrderWithDetails(actionOrder.id);
+      const orderDetails = await orderService.getOrderWithDetails(actionOrder.id, shop?.id);
       
       // Create reviews for each product in the order
       for (const item of orderDetails.items) {
@@ -182,7 +184,8 @@ const MyPurchase = () => {
             product_id: item.product_id,
             user_id: user.id,
             rating: rating,
-            comment: ratingComment
+            comment: ratingComment,
+            shop_id: shop?.id
           });
         }
       }

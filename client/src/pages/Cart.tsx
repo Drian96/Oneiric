@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
+import { buildShopPath } from '../services/api';
 import Header from '../shared/Header';
 import Footer from '../shared/Footer';
 
@@ -32,7 +33,7 @@ const CartPage = () => {
         {items.length === 0 ? (
           <div className="bg-white rounded-lg p-8 text-center">
             <p className="text-dgray mb-4">Your cart is empty.</p>
-            <Link to="/products" className="inline-block bg-dgreen text-cream px-6 py-3 rounded-lg hover:bg-lgreen">Continue Shopping</Link>
+            <Link to={buildShopPath('products')} className="inline-block bg-dgreen text-cream px-6 py-3 rounded-lg hover:bg-lgreen">Continue Shopping</Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -108,7 +109,7 @@ const CartPage = () => {
                 <span className="text-dgreen font-semibold">₱{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
               </div>
               <button 
-                onClick={() => navigate('/checkout')}
+                onClick={() => navigate(buildShopPath('checkout'))}
                 className="w-full bg-dgreen text-cream px-6 py-3 rounded-lg hover:bg-lgreen mb-3 cursor-pointer"
               >
                 Proceed to Checkout

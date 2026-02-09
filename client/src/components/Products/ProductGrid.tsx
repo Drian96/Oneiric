@@ -4,6 +4,8 @@ import { productService, type Product as DbProduct, type ProductImage } from '..
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCartAnimation } from '../../contexts/CartAnimationContext';
+import { buildShopPath } from '../../services/api';
+import { useShop } from '../../contexts/ShopContext';
 import { is3DModel } from '../../utils/modelUtils';
 import Model3DViewer from './Model3DViewer';
 
@@ -22,14 +24,16 @@ const ProductGrid = ({ selectedCategory, sortBy, searchQuery = '', initialPage =
   const pageSize = 16;
   const { addItem } = useCart();
   const { isAuthenticated } = useAuth();
+  const { shop } = useShop();
   const { triggerAnimation } = useCartAnimation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     const load = async () => {
+      if (!shop?.id) return;
       setLoading(true);
-      const products = await productService.getProducts();
+      const products = await productService.getProducts(shop.id);
       setItems(products);
       const map: Record<string, ProductImage[]> = {};
       for (const p of products) {
@@ -39,7 +43,7 @@ const ProductGrid = ({ selectedCategory, sortBy, searchQuery = '', initialPage =
       setLoading(false);
     };
     load();
-  }, []);
+  }, [shop?.id]);
 
   // Sync currentPage with URL 'page' param on mount and when params change
   useEffect(() => {
@@ -184,7 +188,7 @@ const ProductGrid = ({ selectedCategory, sortBy, searchQuery = '', initialPage =
                   onClick={(e) => {
                     e.preventDefault();
                     if (!isAuthenticated) {
-                      navigate('/login');
+                      navigate(buildShopPath('login'));
                       return;
                     }
                     

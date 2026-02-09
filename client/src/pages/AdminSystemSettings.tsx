@@ -4,6 +4,7 @@ import AdminSystemSettings from '../components/admin/AdminSystemSettings';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { buildShopPath } from '../services/api';
 
 // Admin System Settings Page
 const AdminSystemSettingsPage = () => {
@@ -13,7 +14,7 @@ const AdminSystemSettingsPage = () => {
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated || !user || user.role !== 'admin') {
-      navigate('/', { replace: true });
+      navigate(buildShopPath(''), { replace: true });
     }
   }, [isAuthenticated, isLoading, user, navigate]);
 

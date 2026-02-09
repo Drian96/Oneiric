@@ -20,6 +20,10 @@ import AdminProfile from './pages/AdminProfile';
 import AdminSystemSettingsPage from './pages/AdminSystemSettings';
 import ForgotPassword from './pages/ForgotPassword.tsx';
 import Terms from './pages/Terms.tsx';
+import ShopLayout from './components/shop/ShopLayout';
+import PlatformLanding from './pages/PlatformLanding';
+import PlatformLogin from './pages/PlatformLogin';
+import CreateShop from './pages/CreateShop';
 
 const App = () => {
   return (
@@ -30,36 +34,44 @@ const App = () => {
             {/* Flying item animation component - renders when add to cart is clicked */}
             <FlyingItem />
             <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/product/:id" element={<ProductDetailPage />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/checkout" element={<Checkout />} />
+              <Route path="/" element={<PlatformLanding />} />
+              <Route path="/platform" element={<PlatformLanding />} />
+              <Route path="/platform/login" element={<PlatformLogin />} />
+              <Route path="/platform/create-shop" element={<CreateShop />} />
 
-        {/* Customer protected routes */}
-        <Route element={<ProtectedRoute allowedRoles={["customer", "admin", "manager", "staff"]} />}> 
-          <Route path="/profile" element={<UserProfile />} />
-        </Route>
+              <Route path="/:shopSlug" element={<ShopLayout />}>
+                <Route index element={<Home />} />
+                <Route path="signup" element={<SignUp />} />
+                <Route path="login" element={<Login />} />
+                <Route path="auth/callback" element={<AuthCallback />} />
+                <Route path="forgot-password" element={<ForgotPassword />} />
+                <Route path="terms" element={<Terms />} />
+                <Route path="products" element={<Products />} />
+                <Route path="product/:id" element={<ProductDetailPage />} />
+                <Route path="cart" element={<CartPage />} />
+                <Route path="checkout" element={<Checkout />} />
 
-        {/* Admin area: allow admin, manager, staff */}
-        <Route element={<ProtectedRoute allowedRoles={["admin", "manager", "staff"]} />}> 
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/AdminProfile" element={<AdminProfile />} />
-        </Route>
+                {/* Customer protected routes */}
+                <Route element={<ProtectedRoute allowedRoles={["customer", "admin", "manager", "staff"]} />}> 
+                  <Route path="profile" element={<UserProfile />} />
+                </Route>
 
-        {/* System settings: admin only */}
-        <Route element={<ProtectedRoute allowedRoles={["admin"]} />}> 
-          <Route path="/admin/system-settings" element={<AdminSystemSettingsPage />} />
-        </Route>
+                {/* Admin area: allow admin, manager, staff */}
+                <Route element={<ProtectedRoute allowedRoles={["admin", "manager", "staff"]} />}> 
+                  <Route path="admin" element={<Admin />} />
+                  <Route path="AdminProfile" element={<AdminProfile />} />
+                </Route>
 
-        <Route path="/logout" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<NotFound />} />
-        </Routes>
+                {/* System settings: admin only */}
+                <Route element={<ProtectedRoute allowedRoles={["admin"]} />}> 
+                  <Route path="admin/system-settings" element={<AdminSystemSettingsPage />} />
+                </Route>
+
+                <Route path="logout" element={<Navigate to=".." replace />} />
+              </Route>
+
+              <Route path="*" element={<NotFound />} />
+            </Routes>
           </CartAnimationProvider>
         </NotificationProvider>
       </CartProvider>

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSignup } from './SignUpContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { RegisterRequest } from '../../../services/api';
+import { buildShopPath } from '../../../services/api';
 
 interface FormData {
   firstName: string;
@@ -47,7 +48,7 @@ const CompleteRegistration: React.FC = () => {
     console.log('🎉 User clicked OK, navigating to products page');
     setShowSuccessModal(false);
     resetSignup(); // Reset signup context when user clicks OK
-    navigate('/products'); // Redirect to products page instead of home
+    navigate(buildShopPath('products')); // Redirect to products page instead of home
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -198,7 +199,7 @@ const CompleteRegistration: React.FC = () => {
             required
           />
           <label htmlFor="terms" className="text-sm text-dgray">
-            I agree to the <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-dgreen hover:underline">Terms & Conditions</Link>
+            I agree to the <Link to={buildShopPath('terms')} target="_blank" rel="noopener noreferrer" className="text-dgreen hover:underline">Terms & Conditions</Link>
           </label>
         </div>
 

@@ -2,7 +2,8 @@
 // Creates notifications in Supabase when orders are created/updated
 
 const { createClient } = require('@supabase/supabase-js');
-const User = require('../models/User');
+const { sequelize } = require('../config/database');
+const { QueryTypes } = require('sequelize');
 
 // Initialize Supabase client for backend operations
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -38,6 +39,7 @@ const createNotification = async (notificationData) => {
       .from('notifications')
       .insert([{
         user_id: notificationData.user_id,
+        shop_id: notificationData.shop_id || null,
         title: notificationData.title,
         message: notificationData.message,
         type: notificationData.type || 'info',
@@ -63,7 +65,7 @@ const createNotification = async (notificationData) => {
 /**
  * Create order-related notifications
  */
-const createOrderNotification = async (userId, orderNumber, orderId, status, totalAmount) => {
+const createOrderNotification = async (userId, orderNumber, orderId, status, totalAmount, shopId) => {
   const statusMessages = {
     pending: {
       title: 'Order Placed',
@@ -94,6 +96,7 @@ const createOrderNotification = async (userId, orderNumber, orderId, status, tot
 
   return await createNotification({
     user_id: userId,
+    shop_id: shopId,
     title: statusInfo.title,
     message: statusInfo.message,
     type: 'order',
@@ -112,12 +115,20 @@ const createOrderNotification = async (userId, orderNumber, orderId, status, tot
 
 const ADMIN_ROLES = ['admin', 'manager', 'staff'];
 
-const fetchAdminUsers = async () => {
+const fetchShopAdmins = async (shopId) => {
   try {
-    const admins = await User.findAll({
-      attributes: ['id', 'first_name', 'last_name', 'email', 'role'],
-      where: { role: ADMIN_ROLES },
-    });
+    const admins = await sequelize.query(
+      `SELECT u.id, u.first_name, u.last_name, u.email, sm.role
+         FROM public.shop_members sm
+         JOIN public.users u ON u.id = sm.user_id
+        WHERE sm.shop_id = :shop_id
+          AND sm.status = 'active'
+          AND sm.role = ANY(:roles)`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { shop_id: shopId, roles: ADMIN_ROLES },
+      }
+    );
     return admins;
   } catch (error) {
     console.error('❌ Failed to fetch admin users for notifications:', error.message);
@@ -125,8 +136,8 @@ const fetchAdminUsers = async () => {
   }
 };
 
-const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount, customerName, event }) => {
-  const admins = await fetchAdminUsers();
+const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount, customerName, event, shopId }) => {
+  const admins = await fetchShopAdmins(shopId);
   if (admins.length === 0) {
     console.warn('⚠️ No admin users found to notify.');
     return;
@@ -156,6 +167,7 @@ const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount,
     admins.map((admin) =>
       createNotification({
         user_id: admin.id,
+        shop_id: shopId,
         title,
         message,
         type: 'order',

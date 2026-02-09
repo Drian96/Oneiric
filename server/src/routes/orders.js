@@ -12,6 +12,7 @@ const {
 // Import authentication middleware
 const { authenticateToken } = require('../middleware/auth');
 const { auditLogger } = require('../middleware/auditLogger');
+const { resolveShop, requireShop } = require('../middleware/tenant');
 
 // ============================================================================
 // ORDER ROUTES
@@ -55,7 +56,7 @@ const { auditLogger } = require('../middleware/auditLogger');
  * Middleware:
  * - authenticateToken: Verifies JWT token
  */
-router.post('/', authenticateToken, auditLogger('Create Order', 'Orders', 'Order placed'), createOrder);
+router.post('/', resolveShop, requireShop, authenticateToken, auditLogger('Create Order', 'Orders', 'Order placed'), createOrder);
 
 /**
  * GET /api/orders/user/:userId
@@ -84,7 +85,7 @@ router.post('/', authenticateToken, auditLogger('Create Order', 'Orders', 'Order
  * Middleware:
  * - authenticateToken: Verifies JWT token
  */
-router.get('/user/:userId', authenticateToken, getUserOrders);
+router.get('/user/:userId', resolveShop, requireShop, authenticateToken, getUserOrders);
 
 /**
  * GET /api/orders/:id
@@ -120,7 +121,7 @@ router.get('/user/:userId', authenticateToken, getUserOrders);
  * Middleware:
  * - authenticateToken: Verifies JWT token
  */
-router.get('/:id', authenticateToken, getOrderById);
+router.get('/:id', resolveShop, requireShop, authenticateToken, getOrderById);
 
 /**
  * PUT /api/orders/:id/status
@@ -151,6 +152,6 @@ router.get('/:id', authenticateToken, getOrderById);
  * Middleware:
  * - authenticateToken: Verifies JWT token
  */
-router.put('/:id/status', authenticateToken, auditLogger('Update Order Status', 'Orders', 'Order status changed'), updateOrderStatus);
+router.put('/:id/status', resolveShop, requireShop, authenticateToken, auditLogger('Update Order Status', 'Orders', 'Order status changed'), updateOrderStatus);
 
 module.exports = router;

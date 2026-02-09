@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { buildShopPath } from '../services/api';
 import Header from "../components/Home/HeaderRight";
 import Footer from "../shared/Footer";
 import Hero from "../components/Home/Hero";
@@ -16,9 +17,9 @@ const Home = () => {
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       if (user && (user.role === 'admin' || user.role === 'manager' || user.role === 'staff')) {
-        navigate('/admin');
+        navigate(buildShopPath('admin'));
       } else {
-        navigate('/products');
+        navigate(buildShopPath('products'));
       }
     }
   }, [isAuthenticated, isLoading, user, navigate]);

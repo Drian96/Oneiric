@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { buildShopPath } from '../services/api';
 import AdminSidebar from '../components/admin/AdminProfileSidebar';
 import AdminProfileInformation from '../components/admin/AdminProfileInformation';
 import AdminSecurity from '../components/admin/AdminSecurity';
@@ -19,7 +20,7 @@ const AdminProfile = () => {
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated || !user || !['admin', 'manager', 'staff'].includes(user.role)) {
-      navigate('/', { replace: true });
+      navigate(buildShopPath(''), { replace: true });
     }
   }, [isAuthenticated, isLoading, user, navigate]);
 

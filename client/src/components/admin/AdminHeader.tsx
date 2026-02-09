@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { Notification } from '../../services/supabase';
+import { buildShopPath } from '../../services/api';
+import { useShop } from '../../contexts/ShopContext';
 import furnitureLogo from '../../assets/AR-Furniture_Logo.png'
 import shopName from '../../assets/NAME.png'
 
@@ -13,6 +15,7 @@ const Header = () => {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
+  const { shop } = useShop();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { notifications, unreadCount, markAsRead, deleteNotification } = useNotifications();
   const navigate = useNavigate();
@@ -58,7 +61,8 @@ const Header = () => {
       await markAsRead(notification.id);
     }
     if (notification.link) {
-      navigate(notification.link);
+      const target = notification.link.startsWith('/') ? buildShopPath(notification.link) : notification.link;
+      navigate(target);
       setShowNotifications(false);
     }
   };
@@ -75,9 +79,9 @@ const Header = () => {
         <div className="flex items-center justify-between h-16">
 
           <div className="flex items-center">
-            <Link to="/admin" className="text-2xl font-serif font-bold text-dgreen hover:text-lgreen transition-colors">
+            <Link to={buildShopPath('admin')} className="text-2xl font-serif font-bold text-dgreen hover:text-lgreen transition-colors">
               <div className="flex items-center">
-                <img src={furnitureLogo} alt="Furniture Logo" className="h-12 mt-2" />
+                <img src={shop?.logo_url || furnitureLogo} alt="Furniture Logo" className="h-12 mt-2" />
                 <img src={shopName} alt="Shop Name" className="h-10 mt-2" />
               </div>
             </Link>
@@ -165,7 +169,7 @@ const Header = () => {
               {isUserMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
                   <Link
-                    to="/AdminProfile"
+                    to={buildShopPath('AdminProfile')}
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   >
                     Profile
@@ -173,7 +177,7 @@ const Header = () => {
                   {/* Settings visible only for admin */}
                   {user?.role === 'admin' && (
                     <Link
-                      to="/admin/system-settings"
+                      to={buildShopPath('admin/system-settings')}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       Settings

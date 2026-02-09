@@ -9,6 +9,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Centralize bucket name here so it's consistent across the app
 export const PRODUCT_IMAGES_BUCKET = 'product-images';
+export const SHOP_LOGOS_BUCKET = 'shop-logos';
 
 // Ensure we have a Supabase Auth session in the browser for Storage RLS
 // For Option B: sign in a dedicated storage user configured via env vars.
