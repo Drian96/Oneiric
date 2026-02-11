@@ -25,6 +25,49 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 // Create Express application instance
 const app = express();
 
+const validateRuntimeEnv = () => {
+  const required = ['SUPABASE_URL', 'SUPABASE_JWT_SECRET'];
+  const requiredInProduction = ['SUPABASE_SERVICE_ROLE_KEY', 'CORS_ORIGIN'];
+  const missing = required.filter((key) => !process.env[key]);
+  const missingProd = requiredInProduction.filter((key) => !process.env[key]);
+  const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  if (!isDevelopment && missingProd.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missingProd.join(', ')}`);
+  }
+
+  if (isDevelopment && missingProd.length > 0) {
+    console.warn(`⚠️ Recommended env vars missing for production parity: ${missingProd.join(', ')}`);
+  }
+};
+
+const ensureUserAuthColumns = async () => {
+  // Self-heal for environments where SQL migration 005 wasn't run yet.
+  await sequelize.query(`
+    ALTER TABLE public.users
+      ADD COLUMN IF NOT EXISTS auth_user_id UUID;
+  `);
+
+  await sequelize.query(`
+    ALTER TABLE public.users
+      ADD COLUMN IF NOT EXISTS last_shop_id UUID;
+  `);
+
+  await sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_auth_user_id
+      ON public.users (auth_user_id);
+  `);
+
+  await sequelize.query(`
+    CREATE INDEX IF NOT EXISTS idx_users_last_shop_id
+      ON public.users (last_shop_id);
+  `);
+};
+
 // ============================================================================
 // MIDDLEWARE CONFIGURATION
 // Middleware functions are executed in order for every request
@@ -111,6 +154,10 @@ const API_PREFIX = '/api/v1';
 // All auth routes will be prefixed with /api/v1/auth
 app.use(`${API_PREFIX}/auth`, authRoutes);
 
+// Current user routes (Supabase auth)
+const meRoutes = require('./routes/me');
+app.use(`${API_PREFIX}`, meRoutes);
+
 // Admin analytics and audit routes
 const adminRoutes = require('./routes/admin');
 app.use(`${API_PREFIX}/admin`, adminRoutes);
@@ -174,10 +221,15 @@ app.use(errorHandler);
 const startServer = async (port = process.env.PORT || 5000) => {
   try {
     console.log('🚀 Starting AR-Furniture API server...');
+    validateRuntimeEnv();
     
     // Test database connection
     console.log('📊 Testing database connection...');
     await testConnection();
+
+    // Ensure critical auth columns exist before app traffic hits /me and registerShop.
+    console.log('🧩 Ensuring auth column compatibility...');
+    await ensureUserAuthColumns();
     
     // Sync database schema (only create tables if they don't exist)
     // NOTE: We use SQL migrations for schema changes, not Sequelize sync

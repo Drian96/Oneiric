@@ -19,9 +19,7 @@ const { auditLogger } = require('../middleware/auditLogger');
 
 // Import authentication middleware
 const {
-  authenticateToken,
-  requireCustomer,
-  requireStaff
+  authenticateToken
 } = require('../middleware/auth');
 
 // Import validation middleware
@@ -200,7 +198,7 @@ router.post('/change-password',
  * - authenticateToken: Verifies JWT token and attaches user to req.user
  * - requireCustomer: Ensures only customers can access this route
  */
-router.post('/logout', authenticateToken, requireCustomer, auditLogger('Logout', 'Authentication', 'User logged out'), logout);
+router.post('/logout', authenticateToken, auditLogger('Logout', 'Authentication', 'User logged out'), logout);
 
 /**
  * GET /api/auth/verify

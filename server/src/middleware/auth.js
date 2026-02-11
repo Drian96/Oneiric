@@ -1,6 +1,9 @@
 // Import required modules and utilities
+const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Our User model
 const { verifyToken, extractTokenFromHeader } = require('../utils/jwt'); // JWT utilities
+const { sequelize } = require('../config/database');
+const { QueryTypes } = require('sequelize');
 
 // ============================================================================
 // AUTHENTICATION MIDDLEWARE
@@ -26,6 +29,71 @@ const { verifyToken, extractTokenFromHeader } = require('../utils/jwt'); // JWT 
  * 4. Attaches user data to req.user
  * 5. Calls next() to continue to the route handler
  */
+const getSupabaseUrl = () => process.env.SUPABASE_URL;
+const shouldAllowLegacyJwt = () => process.env.ALLOW_LEGACY_CUSTOM_JWT === 'true';
+let jwksCache = null;
+
+const getJwks = async () => {
+  if (jwksCache) return jwksCache;
+  const supabaseUrl = getSupabaseUrl();
+  if (!supabaseUrl) return null;
+  const { createRemoteJWKSet } = await import('jose');
+  jwksCache = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
+  return jwksCache;
+};
+
+const verifySupabaseToken = async (token) => {
+  const supabaseSecret = process.env.SUPABASE_JWT_SECRET;
+  if (supabaseSecret) {
+    try {
+      return jwt.verify(token, supabaseSecret);
+    } catch (error) {
+      // fall through to JWKS verification
+    }
+  }
+
+  const jwks = await getJwks();
+  if (!jwks) return null;
+  try {
+    const { jwtVerify } = await import('jose');
+    const supabaseUrl = getSupabaseUrl();
+    const issuer = supabaseUrl ? `${supabaseUrl}/auth/v1` : undefined;
+    const { payload } = await jwtVerify(token, jwks, issuer ? { issuer } : {});
+    return payload;
+  } catch (error) {
+    return null;
+  }
+};
+
+const authenticateSupabase = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = extractTokenFromHeader(authHeader);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const supabaseClaims = await verifySupabaseToken(token);
+    if (supabaseClaims) {
+      req.auth = { type: 'supabase', claims: supabaseClaims };
+      return next();
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid Supabase token. Please login again.'
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid token. Please login again.'
+    });
+  }
+};
+
 const authenticateToken = async (req, res, next) => {
   try {
     // Get the Authorization header from the request
@@ -42,34 +110,62 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Verify the token and get the decoded payload
-    const decoded = verifyToken(token);
-    
-    // Find the user in the database using the ID from the token
-    const user = await User.findByPk(decoded.id);
-    
-    // If user doesn't exist, return unauthorized error
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
+    // Primary auth path: Supabase JWT
+    const supabaseClaims = await verifySupabaseToken(token);
+    if (supabaseClaims) {
+      req.auth = { type: 'supabase', claims: supabaseClaims };
+      let user = await User.findOne({ where: { auth_user_id: supabaseClaims.sub } });
+      if (!user && supabaseClaims.email) {
+        user = await User.findOne({ where: { email: supabaseClaims.email.toLowerCase() } });
+        if (user && !user.auth_user_id) {
+          await user.update({ auth_user_id: supabaseClaims.sub });
+        }
+      }
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not linked. Please complete profile.'
+        });
+      }
+      if (!user.isActive()) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account is inactive. Please contact support.'
+        });
+      }
+      req.user = user;
+      return next();
     }
 
-    // Check if user account is active
-    if (!user.isActive()) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is inactive. Please contact support.'
-      });
+    // Temporary compatibility mode: allow legacy custom JWT only when explicitly enabled.
+    if (shouldAllowLegacyJwt()) {
+      const decoded = verifyToken(token);
+      const user = await User.findByPk(decoded.id);
+      
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      if (!user.isActive()) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account is inactive. Please contact support.'
+        });
+      }
+
+      req.auth = { type: 'custom', claims: decoded };
+      req.user = user;
+      return next();
     }
 
-    // Attach the user data to the request object
-    // This makes user data available in route handlers via req.user
-    req.user = user;
-    
-    // Call next() to continue to the next middleware or route handler
-    next();
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid Supabase token. Please login again.'
+    });
 
   } catch (error) {
     // Handle different types of JWT errors
@@ -115,7 +211,7 @@ const authenticateToken = async (req, res, next) => {
  * 4. If not allowed, returns forbidden error
  */
 const requireRole = (allowedRoles) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     try {
       // Get user from request (set by authenticateToken middleware)
       const user = req.user;
@@ -123,7 +219,33 @@ const requireRole = (allowedRoles) => {
       // Convert single role to array for easier handling
       const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
       
-      // Check if user's role is in the allowed roles
+      if (req.shop?.id) {
+        const [membership] = await sequelize.query(
+          `SELECT role
+           FROM public.shop_members
+           WHERE shop_id = :shop_id AND user_id = :user_id AND status = 'active'
+           LIMIT 1`,
+          {
+            type: QueryTypes.SELECT,
+            replacements: { shop_id: req.shop.id, user_id: user.id },
+          }
+        );
+
+        if (!membership || !roles.includes(membership.role)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied. Insufficient permissions.'
+          });
+        }
+
+        if (req.user.last_shop_id !== req.shop.id) {
+          await req.user.update({ last_shop_id: req.shop.id });
+        }
+
+        return next();
+      }
+
+      // Global role fallback
       if (!roles.includes(user.role)) {
         return res.status(403).json({
           success: false,
@@ -181,15 +303,27 @@ const optionalAuth = async (req, res, next) => {
       return next();
     }
 
-    // Try to verify the token
-    const decoded = verifyToken(token);
-    
-    // Find the user in the database
-    const user = await User.findByPk(decoded.id);
-    
-    // If user exists and is active, attach to request
-    if (user && user.isActive()) {
-      req.user = user;
+    const supabaseClaims = await verifySupabaseToken(token);
+    if (supabaseClaims) {
+      const user = await User.findOne({ where: { auth_user_id: supabaseClaims.sub } });
+      if (user && user.isActive()) {
+        req.auth = { type: 'supabase', claims: supabaseClaims };
+        req.user = user;
+      }
+      return next();
+    }
+
+    if (shouldAllowLegacyJwt()) {
+      // Try to verify the token
+      const decoded = verifyToken(token);
+      // Find the user in the database
+      const user = await User.findByPk(decoded.id);
+      
+      // If user exists and is active, attach to request
+      if (user && user.isActive()) {
+        req.auth = { type: 'custom', claims: decoded };
+        req.user = user;
+      }
     }
     
     // Always continue to next middleware/route handler
@@ -234,6 +368,7 @@ const requireStaff = requireRole(['admin', 'manager', 'staff']);
 // Export all middleware functions
 module.exports = {
   authenticateToken,  // Main authentication middleware
+  authenticateSupabase, // Supabase JWT middleware
   requireRole,        // Role-based access control
   optionalAuth,       // Optional authentication
   requireAdmin,       // Admin-only access

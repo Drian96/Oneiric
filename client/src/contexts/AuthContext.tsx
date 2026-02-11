@@ -4,24 +4,20 @@
 // ============================================================================
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
-  User, 
-  AuthResponse, 
-  RegisterRequest, 
-  LoginRequest, 
+import {
+  User,
+  RegisterRequest,
+  LoginRequest,
   ProfileUpdateRequest,
   ChangePasswordRequest,
-  register as apiRegister,
-  login as apiLogin,
-  logout as apiLogout,
-  getProfile,
   updateProfile as apiUpdateProfile,
   changePassword as apiChangePassword,
-  verifyToken,
-  isAuthenticated,
-  removeToken,
-  getShopSlugFromPath
+  getMe,
+  getShopSlugFromPath,
+  ShopMembership,
 } from '../services/api';
+import { supabase } from '../services/supabase/client';
+import { signOut as supabaseSignOut } from '../services/supabase/auth';
 
 // ============================================================================
 // CONTEXT INTERFACES
@@ -31,6 +27,8 @@ import {
 interface AuthContextType {
   // User state
   user: User | null;
+  memberships: ShopMembership[];
+  lastShopSlug: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   
@@ -67,6 +65,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // State management
   const [user, setUser] = useState<User | null>(null);
+  const [memberships, setMemberships] = useState<ShopMembership[]>([]);
+  const [lastShopSlug, setLastShopSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // ============================================================================
@@ -79,22 +79,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         console.log('🔍 Checking authentication status...');
         
-        // Check if user has a stored token
-        if (isAuthenticated()) {
-          console.log('🔑 Found stored token, verifying...');
-          
-          // Verify the token with the backend
-          const userData = await verifyToken();
-          setUser(userData);
-          console.log('✅ Token verified, user authenticated:', userData.email, 'role:', userData.role);
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          const me = await getMe();
+          setUser(me.user);
+          setMemberships(me.memberships || []);
+          setLastShopSlug(me.lastShopSlug || null);
+          console.log('✅ Supabase session loaded:', me.user.email);
         } else {
-          console.log('❌ No stored token found');
+          console.log('❌ No Supabase session found');
         }
       } catch (error) {
         console.error('❌ Authentication initialization failed:', error);
-        // Clear any invalid tokens
-        removeToken();
         setUser(null);
+        setMemberships([]);
+        setLastShopSlug(null);
       } finally {
         setIsLoading(false);
       }
@@ -115,11 +114,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       console.log('📝 Registering new user:', userData.email);
-      
-      const response: AuthResponse = await apiRegister(userData);
-      setUser(response.user);
-      
-      console.log('✅ Registration successful:', response.user.email);
+      await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            first_name: userData.firstName,
+            last_name: userData.lastName,
+          },
+        },
+      });
+      const { data } = await supabase.auth.signInWithPassword({
+        email: userData.email,
+        password: userData.password,
+      });
+      if (data.session) {
+        const me = await getMe();
+        setUser(me.user);
+        setMemberships(me.memberships || []);
+        setLastShopSlug(me.lastShopSlug || null);
+      }
     } catch (error) {
       console.error('❌ Registration failed:', error);
       throw error;
@@ -136,12 +150,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       console.log('🔐 Logging in user:', credentials.email);
-      
-      const response: AuthResponse = await apiLogin(credentials);
-      setUser(response.user);
-      
-      console.log('✅ Login successful:', response.user.email);
-      return response.user;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+      if (error) throw error;
+      if (!data.session) {
+        throw new Error('No session found after login.');
+      }
+      const me = await getMe();
+      setUser(me.user);
+      setMemberships(me.memberships || []);
+      setLastShopSlug(me.lastShopSlug || null);
+      console.log('✅ Login successful:', me.user.email);
+      return me.user;
     } catch (error) {
       console.error('❌ Login failed:', error);
       throw error;
@@ -157,9 +179,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       console.log('🚪 Logging out user...');
-      
-      await apiLogout();
+      await supabaseSignOut();
       setUser(null);
+      setMemberships([]);
+      setLastShopSlug(null);
       
       console.log('✅ Logout successful');
       
@@ -170,6 +193,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('❌ Logout failed:', error);
       // Even if API call fails, clear local state
       setUser(null);
+      setMemberships([]);
+      setLastShopSlug(null);
       // Still redirect to home page
       const shopSlug = getShopSlugFromPath();
       window.location.href = shopSlug ? `/${shopSlug}` : '/';
@@ -225,7 +250,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const clearUser = (): void => {
     console.log('🧹 Clearing user data...');
     setUser(null);
-    removeToken();
+    setMemberships([]);
+    setLastShopSlug(null);
   };
 
   /**
@@ -234,17 +260,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    */
   const refreshAuth = async (): Promise<void> => {
     try {
-      if (isAuthenticated()) {
-        const userData = await verifyToken();
-        setUser(userData);
-        console.log('✅ Auth refreshed, user authenticated:', userData.email);
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const me = await getMe();
+        setUser(me.user);
+        setMemberships(me.memberships || []);
+        setLastShopSlug(me.lastShopSlug || null);
+        console.log('✅ Auth refreshed, user authenticated:', me.user.email);
       } else {
         setUser(null);
+        setMemberships([]);
+        setLastShopSlug(null);
       }
     } catch (error) {
       console.error('❌ Auth refresh failed:', error);
       setUser(null);
-      removeToken();
+      setMemberships([]);
+      setLastShopSlug(null);
     }
   };
 
@@ -255,6 +287,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const contextValue: AuthContextType = {
     // State
     user,
+    memberships,
+    lastShopSlug,
     isAuthenticated: !!user,
     isLoading,
     

@@ -1,14 +1,23 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { buildShopPath } from '../../services/api';
 import { useShop } from '../../contexts/ShopContext';
+import { createLoginIntent, saveLoginIntent } from '../../utils/loginIntent';
 import furnitureLogo from '../../assets/AR-Furniture_Logo.png';
 import shopName from '../../assets/NAME.png';
 
 const Header = () => {
   const { shop } = useShop();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const loginPath = shop?.slug ? `/${shop.slug}/login` : '/login';
+
+  const rememberLoginIntent = () => {
+    saveLoginIntent(createLoginIntent({
+      origin: shop?.slug ? 'shop' : 'global',
+      shopSlug: shop?.slug || null,
+      returnTo: null,
+    }));
+  };
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -53,7 +62,8 @@ const Header = () => {
           </nav>
 
           <Link 
-              to={buildShopPath('login')}
+              to={loginPath}
+              onClick={rememberLoginIntent}
               className="hidden md:block border hover:bg-lgreen hover:text-dgreen transition-all duration-200 rounded-xl px-6 py-2 font-medium text-m"
             >
               Login
@@ -91,9 +101,12 @@ const Header = () => {
               ))}
               <div className="px-3 py-2">
                 <Link 
-                  to={buildShopPath('login')} 
+                  to={loginPath}
                   className="border border-header-text text-header-text hover:bg-header-text hover:text-header-background transition-all duration-200 rounded-full px-6 py-2 font-medium text-sm w-full block text-center"
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={() => {
+                    rememberLoginIntent();
+                    setIsMobileMenuOpen(false);
+                  }}
                 >
                   Login
                 </Link>

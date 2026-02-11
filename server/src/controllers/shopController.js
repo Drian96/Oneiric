@@ -2,6 +2,7 @@ const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
 const User = require('../models/User');
 const { hashPassword, validatePasswordStrength } = require('../utils/passwordUtils');
+const { supabaseAdmin } = require('../utils/supabaseAdmin');
 
 /**
  * Public: resolve shop by slug
@@ -149,6 +150,20 @@ exports.registerShop = async (req, res) => {
       }
     );
 
+    let authUserId = null;
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: admin_email.toLowerCase(),
+        password: admin_password,
+        email_confirm: true,
+      });
+      if (error) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: `Supabase auth error: ${error.message}` });
+      }
+      authUserId = data?.user?.id || null;
+    }
+
     const password_hash = await hashPassword(admin_password);
     const adminUser = await User.create(
       {
@@ -159,6 +174,8 @@ exports.registerShop = async (req, res) => {
         phone: admin_phone || null,
         role: 'admin',
         status: 'active',
+        auth_user_id: authUserId,
+        last_shop_id: shop.id,
       },
       { transaction }
     );

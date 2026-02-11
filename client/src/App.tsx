@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import { CartAnimationProvider } from './contexts/CartAnimationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import ShopContext from './contexts/ShopContext';
 import FlyingItem from './components/Cart/FlyingItem';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Home from './pages/Home';
@@ -21,9 +22,8 @@ import AdminSystemSettingsPage from './pages/AdminSystemSettings';
 import ForgotPassword from './pages/ForgotPassword.tsx';
 import Terms from './pages/Terms.tsx';
 import ShopLayout from './components/shop/ShopLayout';
-import PlatformLanding from './pages/PlatformLanding';
-import PlatformLogin from './pages/PlatformLogin';
 import CreateShop from './pages/CreateShop';
+import BuyerDashboard from './pages/BuyerDashboard';
 
 const App = () => {
   return (
@@ -31,13 +31,21 @@ const App = () => {
       <CartProvider>
         <NotificationProvider>
           <CartAnimationProvider>
-            {/* Flying item animation component - renders when add to cart is clicked */}
-            <FlyingItem />
-            <Routes>
-              <Route path="/" element={<PlatformLanding />} />
-              <Route path="/platform" element={<PlatformLanding />} />
-              <Route path="/platform/login" element={<PlatformLogin />} />
-              <Route path="/platform/create-shop" element={<CreateShop />} />
+            <ShopContext.Provider value={{ shop: null, shopSlug: '', isLoading: false }}>
+              {/* Flying item animation component - renders when add to cart is clicked */}
+              <FlyingItem />
+              <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="/create-shop" element={<CreateShop />} />
+              <Route path="/platform/*" element={<Navigate to="/" replace />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/dashboard" element={<BuyerDashboard />} />
+              </Route>
 
               <Route path="/:shopSlug" element={<ShopLayout />}>
                 <Route index element={<Home />} />
@@ -72,6 +80,7 @@ const App = () => {
 
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </ShopContext.Provider>
           </CartAnimationProvider>
         </NotificationProvider>
       </CartProvider>

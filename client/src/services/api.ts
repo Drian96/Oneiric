@@ -3,10 +3,20 @@
 // This file handles all communication with the backend API
 // ============================================================================
 
+import { supabase } from './supabase/client';
+
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
-const DEFAULT_SHOP_SLUG = import.meta.env.VITE_DEFAULT_SHOP_SLUG || '';
-const RESERVED_SLUGS = new Set(['platform']);
+const RESERVED_SLUGS = new Set([
+  'platform',
+  'login',
+  'signup',
+  'forgot-password',
+  'auth',
+  'terms',
+  'create-shop',
+  'dashboard'
+]);
 
 // ============================================================================
 // TYPES AND INTERFACES
@@ -153,6 +163,41 @@ export interface RegisterShopResponse {
   };
 }
 
+export interface ShopMembership {
+  shop_id: string;
+  role: 'admin' | 'manager' | 'staff';
+  slug: string;
+  name: string;
+  status: 'active' | 'suspended' | 'pending';
+  logo_url?: string | null;
+}
+
+export interface MeResponse {
+  user: User;
+  memberships: ShopMembership[];
+  lastShopSlug: string | null;
+}
+
+export interface CustomerSummaryResponse {
+  orders: Array<{
+    id: number;
+    order_number: string;
+    total_amount: number;
+    status: string;
+    created_at: string;
+    shop_id: string;
+    shop_slug: string;
+    shop_name: string;
+    shop_logo_url?: string | null;
+  }>;
+  shops: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    logo_url?: string | null;
+  }>;
+}
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // Helper functions for API communication
@@ -193,16 +238,17 @@ export const isAuthenticated = (): boolean => {
  * Get authorization header for API requests
  * @returns Authorization header object
  */
-const getAuthHeader = (): { Authorization: string } | {} => {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+const getAuthHeader = async (): Promise<{ Authorization: string } | {}> => {
+  const { data } = await supabase.auth.getSession();
+  const supabaseToken = data.session?.access_token;
+  return supabaseToken ? { Authorization: `Bearer ${supabaseToken}` } : {};
 };
 
 export const getShopSlugFromPath = (): string | null => {
   if (typeof window === 'undefined') return null;
   const parts = window.location.pathname.split('/').filter(Boolean);
   const first = parts.length > 0 ? parts[0].toLowerCase() : '';
-  if (!first) return DEFAULT_SHOP_SLUG || null;
+  if (!first) return null;
   if (RESERVED_SLUGS.has(first)) return null;
   return first;
 };
@@ -232,10 +278,11 @@ const apiRequest = async <T>(
 ): Promise<ApiResponse<T>> => {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
+    const authHeader = await getAuthHeader();
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeader(),
+        ...authHeader,
         ...getShopHeader(),
         ...options.headers,
       },
@@ -282,8 +329,6 @@ export const register = async (userData: RegisterRequest): Promise<AuthResponse>
   });
 
   if (response.success && response.data) {
-    // Store the token automatically
-    setToken(response.data.token);
     return response.data;
   }
 
@@ -302,8 +347,6 @@ export const login = async (credentials: LoginRequest): Promise<AuthResponse> =>
   });
 
   if (response.success && response.data) {
-    // Store the token automatically
-    setToken(response.data.token);
     return response.data;
   }
 
@@ -494,6 +537,18 @@ export const registerShop = async (payload: RegisterShopRequest): Promise<Regist
   throw new Error(response.message || 'Failed to register shop');
 };
 
+export const getMe = async (): Promise<MeResponse> => {
+  const response = await apiRequest<MeResponse>('/me');
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to load profile');
+};
+
+export const getCustomerSummary = async (): Promise<CustomerSummaryResponse> => {
+  const response = await apiRequest<CustomerSummaryResponse>('/customers/me/summary');
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to load summary');
+};
+
 // ============================================================================
 // HEALTH CHECK
 // Function to check if API is running
@@ -545,6 +600,8 @@ export default {
   getShopBySlug,
   updateShopBranding,
   registerShop,
+  getMe,
+  getCustomerSummary,
 }; 
 
 // =========================

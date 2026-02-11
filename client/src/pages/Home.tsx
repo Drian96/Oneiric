@@ -1,42 +1,31 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { buildShopPath } from '../services/api';
+import { useNavigate, useParams } from 'react-router-dom';
 import Header from "../components/Home/HeaderRight";
 import Footer from "../shared/Footer";
 import Hero from "../components/Home/Hero";
 import FeaturedProducts from "../components/Home/FeaturedProducts";
 import Testimonials from "../components/Home/Testimonials";
 import About from "../components/Home/About";
+import { useAuth } from '../contexts/AuthContext';
 
 const Home = () => {
-  const { isAuthenticated, isLoading, user } = useAuth();
   const navigate = useNavigate();
+  const { shopSlug } = useParams();
+  const { isAuthenticated, isLoading, memberships, lastShopSlug } = useAuth();
 
-  // Redirect logged-in users to appropriate area by role
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      if (user && (user.role === 'admin' || user.role === 'manager' || user.role === 'staff')) {
-        navigate(buildShopPath('admin'));
-      } else {
-        navigate(buildShopPath('products'));
-      }
+    // Root landing should not show for authenticated users.
+    if (isLoading || shopSlug || !isAuthenticated) return;
+
+    if (memberships.length > 0) {
+      const targetSlug = lastShopSlug || memberships[0]?.slug;
+      if (!targetSlug) return;
+      navigate(`/${targetSlug}/admin`, { replace: true });
+      return;
     }
-  }, [isAuthenticated, isLoading, user, navigate]);
 
-  // Show loading or redirect if user is logged in
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
-
-  // Don't render Home page for logged-in users (they'll be redirected)
-  if (isAuthenticated) {
-    return null;
-  }
+    navigate('/dashboard', { replace: true });
+  }, [isLoading, shopSlug, isAuthenticated, memberships, lastShopSlug, navigate]);
 
   return (
     <div className="min-h-screen">

@@ -6,6 +6,7 @@ const { getValidationErrors } = require('../utils/validation'); // Validation ut
 const { sendVerificationEmail } = require('../utils/email');
 const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
+const { supabaseAdmin } = require('../utils/supabaseAdmin');
 
 // ============================================================================
 // AUTHENTICATION CONTROLLERS
@@ -76,6 +77,23 @@ const register = async (req, res) => {
     // Hash the password before storing
     const hashedPassword = await hashPassword(password);
 
+    // Create Supabase Auth user
+    let authUserId = null;
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: email.toLowerCase(),
+        password,
+        email_confirm: true,
+      });
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message: `Supabase auth error: ${error.message}`,
+        });
+      }
+      authUserId = data?.user?.id || null;
+    }
+
     // Create new user in database
     const newUser = await User.create({
       first_name: firstName,
@@ -86,7 +104,8 @@ const register = async (req, res) => {
       date_of_birth: dateOfBirth || null,
       gender: gender || null,
       role: 'customer', // Default role for new users
-      status: 'active'  // Default status
+      status: 'active',  // Default status
+      auth_user_id: authUserId
     });
 
     // Generate JWT token for the new user

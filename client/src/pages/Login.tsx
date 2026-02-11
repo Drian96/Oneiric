@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import Google from '../assets/google.jpg'; 
 import LoginBG from '../assets/login_bg.mp4';
 import { twMerge } from 'tailwind-merge';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { signInWithGoogle } from '../services/supabase/auth';
-import { buildShopPath } from '../services/api';
+import { buildShopPath, getMe } from '../services/api';
+import { resolvePostLoginRedirect } from '../utils/authRedirect';
+import { clearLoginIntent, createLoginIntent, readLoginIntent, saveLoginIntent } from '../utils/loginIntent';
 import furnitureLogo from '../assets/AR-Furniture_Logo.png';
 import shopName from '../assets/NAME.png';
 // import { signInWithFacebook } from '../services/supabase/auth'; // Commented out - Facebook OAuth has conflicts
@@ -17,28 +19,51 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const { login } = useAuth();
+  const { login, memberships, lastShopSlug, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
+  const { shopSlug } = useParams();
+  const location = useLocation();
+  const savedIntent = readLoginIntent();
+  const intentOrigin = shopSlug ? 'shop' : (savedIntent?.origin || 'global');
+  const intentShopSlug = shopSlug || savedIntent?.shopSlug || null;
+
+  useEffect(() => {
+    const stateReturnTo = (location.state as any)?.returnTo || null;
+    saveLoginIntent(createLoginIntent({
+      origin: shopSlug ? 'shop' : 'global',
+      shopSlug: shopSlug || null,
+      returnTo: stateReturnTo,
+    }));
+  }, [shopSlug, location.state]);
+
+  useEffect(() => {
+    // If already authenticated, do not show login again.
+    if (isLoading || !isAuthenticated) return;
+
+    const target = resolvePostLoginRedirect({
+      origin: intentOrigin,
+      memberships,
+      lastShopSlug,
+      shopSlug: intentShopSlug,
+      returnTo: savedIntent?.returnTo || null,
+    });
+
+    clearLoginIntent();
+    navigate(target, { replace: true });
+  }, [
+    isLoading,
+    isAuthenticated,
+    intentOrigin,
+    memberships,
+    lastShopSlug,
+    intentShopSlug,
+    savedIntent?.returnTo,
+    navigate,
+  ]);
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword(!showPassword);
   }, [showPassword]);
-
-  const handleSuccessOk = useCallback(() => {
-    setShowSuccessModal(false);
-    // After successful login, redirect based on role
-    const stored = localStorage.getItem('authToken');
-    // Fallback: route to products for customers, admin to /admin
-    // Since token may not be easily decoded here, rely on server-verified user in context by re-login return
-    // We'll set a flag in session to indicate lastLoginRole via a custom event
-    const role = sessionStorage.getItem('lastLoginRole');
-    if (role === 'admin' || role === 'manager' || role === 'staff') {
-      navigate(buildShopPath('admin'));
-    } else {
-      navigate(buildShopPath('products'));
-    }
-  }, [navigate]);
 
   const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,14 +71,19 @@ const Login: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const user = await login({ email, password });
-      sessionStorage.setItem('lastLoginRole', user.role);
-      if (user.role === 'admin' || user.role === 'manager' || user.role === 'staff') {
-        navigate(buildShopPath('admin'));
-        return;
-      }
-      setShowSuccessModal(true);
-      // Don't auto-redirect - wait for user to click OK button
+      await login({ email, password });
+      const me = await getMe();
+      const returnTo = (location.state as any)?.returnTo || savedIntent?.returnTo || null;
+      const target = resolvePostLoginRedirect({
+        origin: intentOrigin,
+        memberships: me.memberships || memberships,
+        lastShopSlug: me.lastShopSlug || lastShopSlug,
+        shopSlug: intentShopSlug,
+        returnTo,
+      });
+      clearLoginIntent();
+      navigate(target);
+      return;
     } catch (err: any) {
       let errorMessage = 'Login failed. Please try again.';
       if (err.message) {
@@ -71,19 +101,26 @@ const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [email, password, loading, login, navigate]);
+  }, [email, password, loading, login, navigate, shopSlug, location.state, memberships, lastShopSlug]);
 
   const handleGoogleLogin = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      await signInWithGoogle(`${window.location.origin}${buildShopPath('auth/callback')}`);
+      const returnTo = (location.state as any)?.returnTo || savedIntent?.returnTo || null;
+      saveLoginIntent(createLoginIntent({
+        origin: intentOrigin,
+        shopSlug: intentShopSlug,
+        returnTo,
+      }));
+      const callbackPath = intentShopSlug ? `/${intentShopSlug}/auth/callback` : '/auth/callback';
+      await signInWithGoogle(`${window.location.origin}${callbackPath}`);
       // The OAuth flow will redirect, so we don't need to navigate here
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed. Please try again.');
       setLoading(false);
     }
-  }, []);
+  }, [intentOrigin, intentShopSlug, location.state, savedIntent?.returnTo]);
 
   // Facebook sign-in commented out due to setup conflicts
   // const handleFacebookLogin = useCallback(async () => {
@@ -235,39 +272,28 @@ const Login: React.FC = () => {
             Sign in with Facebook
           </button> */}
         </div>
-        <div className="text-center mt-6 text-white">
-          No account?{' '}
-          <Link
-            to={buildShopPath('signup')}
-            className="text-lgreen hover:text-dgreen hover:underline font-medium transition-colors duration-200"
-          >
-            Sign up
-          </Link>
+        <div className="text-center mt-6 text-white space-y-2">
+          <div>
+            No account?{' '}
+            <Link
+              to={buildShopPath('signup')}
+              className="text-lgreen hover:text-dgreen hover:underline font-medium transition-colors duration-200"
+            >
+              Sign up
+            </Link>
+          </div>
+          <div className="text-sm">
+            Shop owner?{' '}
+            <Link
+              to="/create-shop"
+              className="text-lgreen hover:text-dgreen hover:underline font-medium transition-colors duration-200"
+            >
+              Create a shop
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 text-center">
-            <div className="mb-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-dgreen mb-2">Welcome Back!</h3>
-              <p className="text-dgray mb-6">Login successful! Ready to continue shopping?</p>
-              <button
-                onClick={handleSuccessOk}
-                className="w-full bg-dgreen text-white py-3 px-6 rounded-md hover:bg-lgreen transition-colors font-semibold cursor-pointer"
-              >
-                OK, Let's Go!
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

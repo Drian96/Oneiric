@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
-import { buildShopPath } from "../../services/api";
+import { useShop } from "../../contexts/ShopContext";
 
 const Hero = () => {
+  const { shop } = useShop();
+  const primaryCtaPath = shop?.slug ? `/${shop.slug}/products` : '/create-shop';
+  const secondaryCtaPath = shop?.slug ? `/${shop.slug}` : '/login';
+
   return (
   
     <section id="home"
@@ -22,11 +26,11 @@ const Hero = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to={buildShopPath('products')} className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
+              <Link to={primaryCtaPath} className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
                 Shop Now!
               </Link>
               
-              <Link to={buildShopPath('admin')}
+              <Link to={secondaryCtaPath}
                className="bg-lgreen text-lg px-8 py-4 rounded-lg hover:bg-dgreen transition-colors duration-300 cursor-pointer text-center">
                 Shop Collection
               </Link>

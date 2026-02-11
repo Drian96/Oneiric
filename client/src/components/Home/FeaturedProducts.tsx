@@ -1,18 +1,29 @@
 
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { buildShopPath } from '../../services/api';
+import { useShop } from '../../contexts/ShopContext';
+import { createLoginIntent, saveLoginIntent } from '../../utils/loginIntent';
 
 const FeaturedProducts = () => {
   const { isAuthenticated } = useAuth();
+  const { shop } = useShop();
+  const shopSlug = shop?.slug || null;
 
   const handleProductClick = (productId: number) => {
+    const productPath = shopSlug ? `/${shopSlug}/product/${productId}` : '/login';
+    const loginPath = shopSlug ? `/${shopSlug}/login` : '/login';
+
     if (isAuthenticated) {
       // If logged in, navigate to product detail
-      window.location.href = buildShopPath(`product/${productId}`);
+      window.location.href = productPath;
     } else {
       // If not logged in, redirect to login page
-      window.location.href = buildShopPath('login');
+      saveLoginIntent(createLoginIntent({
+        origin: shopSlug ? 'shop' : 'global',
+        shopSlug,
+        returnTo: productPath,
+      }));
+      window.location.href = loginPath;
     }
   };
   const products = [
@@ -93,7 +104,7 @@ const FeaturedProducts = () => {
         </div>
         
         <div className="text-center mt-12 mb-10">
-          <Link to={buildShopPath('products')} className="bg-lgreen text-lg px-10 py-4 hover:bg-dgreen transition-colors duration-300 rounded-lg cursor-pointer inline-block">
+          <Link to={shopSlug ? `/${shopSlug}/products` : '/create-shop'} className="bg-lgreen text-lg px-10 py-4 hover:bg-dgreen transition-colors duration-300 rounded-lg cursor-pointer inline-block">
             View All Products
           </Link>
         </div>

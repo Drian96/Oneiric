@@ -2,6 +2,34 @@ const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
 const { createOrderNotification, createAdminOrderNotification } = require('../utils/notifications');
 
+const STAFF_ROLES = new Set(['admin', 'manager', 'staff']);
+const CUSTOMER_MUTABLE_STATUSES = new Set(['cancelled', 'return_refund']);
+
+const getActiveShopMembershipRole = async (shopId, userId) => {
+  if (!shopId || !userId) return null;
+
+  const [membership] = await sequelize.query(
+    `SELECT role
+       FROM public.shop_members
+      WHERE shop_id = :shop_id
+        AND user_id = :user_id
+        AND status = 'active'
+      LIMIT 1`,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { shop_id: shopId, user_id: userId },
+    }
+  );
+
+  return membership?.role || null;
+};
+
+const canAccessOrder = ({ actorUserId, actorRole, orderOwnerId }) => {
+  if (!actorUserId) return false;
+  if (STAFF_ROLES.has(actorRole)) return true;
+  return Number(orderOwnerId) === Number(actorUserId);
+};
+
 /**
  * Order Controller
  * Handles order creation and management operations
@@ -16,7 +44,6 @@ exports.createOrder = async (req, res) => {
   
   try {
     const { 
-      user_id, 
       items, 
       total_amount, 
       first_name, 
@@ -30,15 +57,16 @@ exports.createOrder = async (req, res) => {
       payment_method = 'cash_on_delivery'
     } = req.body;
     const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
     
     console.log('🔄 Creating new order...');
 
     // Validate required fields
-    if (!user_id || !items || !Array.isArray(items) || items.length === 0) {
+    if (!actorUserId || !items || !Array.isArray(items) || items.length === 0) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: user_id, items'
+        message: 'Missing required fields: items'
       });
     }
 
@@ -64,7 +92,7 @@ exports.createOrder = async (req, res) => {
         type: QueryTypes.SELECT,
         replacements: {
           shop_id: shopId,
-          user_id,
+          user_id: actorUserId,
           order_number: orderNumber,
           first_name,
           last_name,
@@ -166,7 +194,7 @@ exports.createOrder = async (req, res) => {
     try {
       await Promise.all([
         createOrderNotification(
-          user_id,
+          actorUserId,
           newOrder.order_number,
           newOrder.id,
           'pending',
@@ -224,9 +252,21 @@ exports.getUserOrders = async (req, res) => {
     console.log(`🔄 Fetching orders for user ${userId}...`);
 
     const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const actorRole = await getActiveShopMembershipRole(shopId, actorUserId);
+    const isOwnOrders = Number(userId) === Number(actorUserId);
+
+    if (!isOwnOrders && !STAFF_ROLES.has(actorRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own orders.'
+      });
+    }
+
     const orders = await sequelize.query(
       `SELECT 
         o.id,
+        o.user_id,
         o.order_number,
         o.total_amount,
         o.status,
@@ -271,6 +311,8 @@ exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
     const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const actorRole = await getActiveShopMembershipRole(shopId, actorUserId);
     console.log(`🔄 Fetching order ${id}...`);
 
     // Get order details
@@ -303,6 +345,13 @@ exports.getOrderById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Order not found'
+      });
+    }
+
+    if (!canAccessOrder({ actorUserId, actorRole, orderOwnerId: order.user_id })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own orders.'
       });
     }
 
@@ -352,6 +401,9 @@ exports.updateOrderStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const actorRole = await getActiveShopMembershipRole(shopId, actorUserId);
+    const isStaffActor = STAFF_ROLES.has(actorRole);
     
     console.log(`🔄 Updating order ${id} status to ${status}...`);
 
@@ -370,6 +422,38 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
+    const [existingOrder] = await sequelize.query(
+      `SELECT id, user_id, order_number, first_name, last_name, total_amount
+       FROM public.orders
+       WHERE id = :id AND shop_id = :shop_id
+       LIMIT 1`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { id, shop_id: shopId }
+      }
+    );
+
+    if (!existingOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    if (!canAccessOrder({ actorUserId, actorRole, orderOwnerId: existingOrder.user_id })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update your own order.'
+      });
+    }
+
+    if (!isStaffActor && !CUSTOMER_MUTABLE_STATUSES.has(status)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only shop staff can set this status.'
+      });
+    }
+
     const [updatedOrder] = await sequelize.query(
       `UPDATE public.orders 
        SET status = :status, updated_at = NOW()
@@ -380,13 +464,6 @@ exports.updateOrderStatus = async (req, res) => {
         replacements: { id, status, shop_id: shopId }
       }
     );
-
-    if (!updatedOrder) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
 
     // Create notification for the user about order status update
     try {

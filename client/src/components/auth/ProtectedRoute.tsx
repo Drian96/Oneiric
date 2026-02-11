@@ -1,7 +1,7 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { buildShopPath } from '../../services/api';
+import { createLoginIntent, saveLoginIntent } from '../../utils/loginIntent';
 
 type Role = 'customer' | 'admin' | 'manager' | 'staff';
 
@@ -11,20 +11,36 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, redirectTo = '/login' }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  const loginRedirect = redirectTo === '/login' ? buildShopPath('login') : redirectTo;
+  const { isAuthenticated, isLoading, user, memberships } = useAuth();
+  const location = useLocation();
+  const { shopSlug } = useParams();
+  const loginRedirect = redirectTo === '/login'
+    ? (shopSlug ? `/${shopSlug}/login` : '/login')
+    : redirectTo;
 
   if (isLoading) {
     return null;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to={loginRedirect} replace />;
+    saveLoginIntent(createLoginIntent({
+      origin: shopSlug ? 'shop' : 'global',
+      shopSlug: shopSlug || null,
+      returnTo: location.pathname,
+    }));
+
+    return <Navigate to={loginRedirect} state={{ returnTo: location.pathname }} replace />;
   }
 
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    // If a signed-in user lacks permissions, send them to home
-    return <Navigate to={buildShopPath('')} replace />;
+  if (allowedRoles && user) {
+    if (shopSlug) {
+      const membership = memberships.find((m) => m.slug === shopSlug);
+      if (!membership || !allowedRoles.includes(membership.role)) {
+        return <Navigate to={`/${shopSlug}`} replace />;
+      }
+    } else if (!allowedRoles.includes(user.role)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <Outlet />;

@@ -21,6 +21,13 @@ const User = sequelize.define('User', {
       isEmail: true              // Ensures the email format is valid
     }
   },
+
+  // Supabase Auth user ID (UUID)
+  auth_user_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    unique: true
+  },
   
   // Password hash - stores the encrypted password (never store plain passwords!)
   password_hash: {
@@ -105,6 +112,12 @@ const User = sequelize.define('User', {
   last_login: {
     type: DataTypes.DATE,        // Date and time
     allowNull: true              // This field can be empty
+  },
+
+  // Last accessed shop for redirecting after login
+  last_shop_id: {
+    type: DataTypes.UUID,
+    allowNull: true
   }
 }, {
   // Model configuration options

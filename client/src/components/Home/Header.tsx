@@ -1,12 +1,12 @@
-import { CircleUserRound } from 'lucide-react';
 import { Link } from 'react-router-dom'; 
-import { buildShopPath } from '../../services/api';
 import { useShop } from '../../contexts/ShopContext';
+import { createLoginIntent, saveLoginIntent } from '../../utils/loginIntent';
 import furnitureLogo from '../../assets/AR-Furniture_Logo.png';
 import shopName from '../../assets/NAME.png';
 
 const Header = () => {
   const { shop } = useShop();
+  const loginPath = shop?.slug ? `/${shop.slug}/login` : '/login';
 
   return (
     <header className="bg-cream top-0 z-50">
@@ -45,7 +45,14 @@ const Header = () => {
           {/* User Icon (to navigate to login page) */}
           <div className="flex items-center space-x-4">
           <Link 
-              to={buildShopPath('login')}
+              to={loginPath}
+              onClick={() => {
+                saveLoginIntent(createLoginIntent({
+                  origin: shop?.slug ? 'shop' : 'global',
+                  shopSlug: shop?.slug || null,
+                  returnTo: null,
+                }));
+              }}
               className="border hover:bg-lgreen hover:text-dgreen transition-all duration-200 rounded-xl px-6 py-2 font-medium text-m"
             >
               Login

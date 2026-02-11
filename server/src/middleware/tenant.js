@@ -1,16 +1,41 @@
 const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
 
+const SLUG_PATTERN = /^[a-z0-9-]{3,50}$/;
+
 const resolveShop = async (req, res, next) => {
   try {
-    const headerSlug = req.headers['x-shop-slug'];
-    const querySlug = req.query.shop_slug;
-    const paramSlug = req.params.shopSlug;
-    const slug = (headerSlug || querySlug || paramSlug || '').toString().trim().toLowerCase();
+    const rawHeaderSlug = req.headers['x-shop-slug'];
+    const rawQuerySlug = req.query.shop_slug;
+    const rawParamSlug = req.params.shopSlug;
+
+    const headerSlug = rawHeaderSlug ? rawHeaderSlug.toString().trim().toLowerCase() : '';
+    const querySlug = rawQuerySlug ? rawQuerySlug.toString().trim().toLowerCase() : '';
+    const paramSlug = rawParamSlug ? rawParamSlug.toString().trim().toLowerCase() : '';
+
+    const candidates = [paramSlug, querySlug, headerSlug].filter(Boolean);
+    const slug = candidates[0] || '';
+
+    if (candidates.length > 1) {
+      const hasMismatch = candidates.some((value) => value !== slug);
+      if (hasMismatch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Conflicting shop context was provided.'
+        });
+      }
+    }
 
     if (!slug) {
       req.shop = null;
       return next();
+    }
+
+    if (!SLUG_PATTERN.test(slug)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shop slug format.'
+      });
     }
 
     const [shop] = await sequelize.query(

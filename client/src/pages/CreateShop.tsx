@@ -66,12 +66,12 @@ const CreateShop = () => {
             className="w-full bg-dgreen text-cream px-4 py-2 rounded hover:bg-lgreen transition-colors"
             onClick={() => navigate(`/${successSlug}/login`)}
           >
-            Go to Shop Login
+            Go to Login
           </button>
           <div className="mt-4 text-sm">
             or{' '}
-            <Link to="/platform" className="text-dgreen hover:underline">
-              return to platform
+            <Link to="/" className="text-dgreen hover:underline">
+              return to landing
             </Link>
           </div>
         </div>
@@ -84,7 +84,7 @@ const CreateShop = () => {
       <div className="max-w-3xl mx-auto bg-white rounded-xl shadow p-8 border border-sage-light">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-serif font-bold text-dgreen">Create Your Shop</h1>
-          <Link to="/platform/login" className="text-sm text-dgreen hover:underline">
+          <Link to="/login" className="text-sm text-dgreen hover:underline">
             Already have a shop?
           </Link>
         </div>
