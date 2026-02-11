@@ -7,7 +7,6 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { buildShopPath } from '../services/api';
 import { useShop } from '../contexts/ShopContext';
 import furnitureLogo from '../assets/AR-Furniture_Logo.png';
-import shopName from '../assets/NAME.png'
 
 
 const Header = () => {
@@ -145,8 +144,10 @@ const Header = () => {
         <div className="hidden md:flex items-center justify-between h-16">
           <Link to={buildShopPath('')}>
             <div className="flex items-center">
-              <img src={shop?.logo_url || furnitureLogo} alt="Furniture Logo" className="h-12 mt-2" />
-              <img src={shopName} alt="Shop Name" className="h-10 mt-2 ml-2" />
+              <img src={shop?.logo_url || furnitureLogo} alt={shop?.name || 'Shop Logo'} className="h-12 mt-2" />
+              <div className="ml-3 text-dgreen font-serif font-bold text-xl truncate max-w-[220px]">
+                {shop?.name || 'Oneiric Store'}
+              </div>
             </div>
           </Link>
           
@@ -344,7 +345,12 @@ const Header = () => {
           {/* Left side - Logo and Search */}
           <div className="flex items-center space-x-3 flex-1">
             <Link to={buildShopPath('')}>
-              <img src={shop?.logo_url || furnitureLogo} alt="Furniture Logo" className="h-10" />
+              <div className="flex items-center gap-2">
+                <img src={shop?.logo_url || furnitureLogo} alt={shop?.name || 'Shop Logo'} className="h-10" />
+                <span className="text-dgreen font-semibold text-sm max-w-[110px] truncate">
+                  {shop?.name || 'Oneiric Store'}
+                </span>
+              </div>
             </Link>
             
             {/* Mobile Search - Show only when search icon is clicked */}

@@ -3,7 +3,7 @@ const { QueryTypes } = require('sequelize');
 const { createOrderNotification, createAdminOrderNotification } = require('../utils/notifications');
 
 const STAFF_ROLES = new Set(['admin', 'manager', 'staff']);
-const CUSTOMER_MUTABLE_STATUSES = new Set(['cancelled', 'return_refund']);
+const CUSTOMER_MUTABLE_STATUSES = new Set(['cancelled', 'return_refund', 'completed']);
 
 const getActiveShopMembershipRole = async (shopId, userId) => {
   if (!shopId || !userId) return null;
@@ -319,6 +319,7 @@ exports.getOrderById = async (req, res) => {
     const [order] = await sequelize.query(
       `SELECT 
         o.id,
+        o.user_id,
         o.order_number,
         o.total_amount,
         o.status,
@@ -363,9 +364,14 @@ exports.getOrderById = async (req, res) => {
         oi.quantity,
         oi.price,
         p.name as product_name,
-        p.category as product_category
+        p.category as product_category,
+        pi.image_url as product_image
       FROM public.order_items oi
       JOIN public.products p ON p.id = oi.product_id
+      LEFT JOIN public.product_images pi
+        ON pi.product_id = oi.product_id
+       AND pi.shop_id = oi.shop_id
+       AND pi.is_primary = true
       WHERE oi.order_id = :id AND oi.shop_id = :shop_id`,
       { 
         type: QueryTypes.SELECT,

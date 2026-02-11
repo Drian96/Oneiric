@@ -1,8 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShop } from '../../contexts/ShopContext';
-import { orderService, reviewService, Order } from '../../services/supabase';
+import { reviewService } from '../../services/supabase';
+import { getOrderById, getUserOrders, updateOrderStatus } from '../../services/api';
 import { Package, Eye, X } from 'lucide-react';
+
+interface Order {
+  id: number;
+  order_number: string;
+  total_amount: number;
+  status: string;
+  payment_method?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const MyPurchase = () => {
   const { user } = useAuth();
@@ -42,14 +61,14 @@ const MyPurchase = () => {
       
       try {
         setIsLoading(true);
-        const userOrders = await orderService.getUserOrders(user.id, shop?.id);
+        const userOrders = await getUserOrders(user.id);
         setOrders(userOrders);
         
         // Load order items for each order
         const itemsMap: Record<number, any[]> = {};
         for (const order of userOrders) {
           try {
-            const orderDetails = await orderService.getOrderWithDetails(order.id, shop?.id);
+            const orderDetails = await getOrderById(order.id);
             itemsMap[order.id] = orderDetails.items;
           } catch (error) {
             console.error(`Failed to load items for order ${order.id}:`, error);
@@ -72,8 +91,8 @@ const MyPurchase = () => {
     const matchesTab = activeTab === 'all' || order.status === activeTab;
     const matchesSearch = searchQuery === '' || 
       order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.last_name.toLowerCase().includes(searchQuery.toLowerCase());
+      (order.first_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.last_name || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     return matchesTab && matchesSearch;
   });
@@ -100,8 +119,9 @@ const MyPurchase = () => {
   const loadOrderItems = async (orderId: number) => {
     try {
       setLoadingOrderItems(true);
-      const orderDetails = await orderService.getOrderWithDetails(orderId, shop?.id);
+      const orderDetails = await getOrderById(orderId);
       setOrderItems(orderDetails.items);
+      setSelectedOrder((prev) => ({ ...(prev || {}), ...(orderDetails as any) }));
     } catch (error) {
       console.error('Failed to load order items:', error);
       setOrderItems([]);
@@ -110,15 +130,19 @@ const MyPurchase = () => {
     }
   };
 
+  const refreshOrders = async () => {
+    if (!user) return;
+    const userOrders = await getUserOrders(user.id);
+    setOrders(userOrders);
+  };
+
   // Handle cancel order
   const handleCancelOrder = async () => {
     if (!actionOrder) return;
     
     try {
-      await orderService.updateOrderStatus(actionOrder.id, 'cancelled', shop?.id);
-      // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
-      setOrders(userOrders);
+      await updateOrderStatus(actionOrder.id, 'cancelled');
+      await refreshOrders();
       setShowCancelConfirm(false);
       setActionOrder(null);
     } catch (error) {
@@ -132,10 +156,8 @@ const MyPurchase = () => {
     if (!actionOrder) return;
     
     try {
-      await orderService.updateOrderStatus(actionOrder.id, 'completed', shop?.id);
-      // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
-      setOrders(userOrders);
+      await updateOrderStatus(actionOrder.id, 'completed');
+      await refreshOrders();
       setShowOrderReceivedConfirm(false);
       setActionOrder(null);
     } catch (error) {
@@ -150,10 +172,8 @@ const MyPurchase = () => {
     
     try {
       // Update order status to return_refund
-      await orderService.updateOrderStatus(actionOrder.id, 'return_refund', shop?.id);
-      // Refresh orders
-      const userOrders = await orderService.getUserOrders(user!.id, shop?.id);
-      setOrders(userOrders);
+      await updateOrderStatus(actionOrder.id, 'return_refund');
+      await refreshOrders();
       setShowReturnRequestConfirm(false);
       setActionOrder(null);
     } catch (error) {
@@ -171,17 +191,18 @@ const MyPurchase = () => {
     
     try {
       // Get order items to create reviews for each product
-      const orderDetails = await orderService.getOrderWithDetails(actionOrder.id, shop?.id);
+      const orderDetails = await getOrderById(actionOrder.id);
       
       // Create reviews for each product in the order
       for (const item of orderDetails.items) {
+        const productId = String(item.product_id);
         // Check if user has already reviewed this product from this order
-        const hasReviewed = await reviewService.hasUserReviewedProduct(actionOrder.id, item.product_id);
+        const hasReviewed = await reviewService.hasUserReviewedProduct(actionOrder.id, productId);
         
         if (!hasReviewed) {
           await reviewService.createReview({
             order_id: actionOrder.id,
-            product_id: item.product_id,
+            product_id: productId,
             user_id: user.id,
             rating: rating,
             comment: ratingComment,
@@ -392,7 +413,7 @@ const MyPurchase = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Payment Method:</span>
-                    <span className="capitalize">{selectedOrder.payment_method.replace('_', ' ')}</span>
+                    <span className="capitalize">{(selectedOrder.payment_method || 'N/A').replace('_', ' ')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Order Date:</span>
@@ -407,27 +428,27 @@ const MyPurchase = () => {
                 <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Name:</span>
-                    <span className="font-medium">{selectedOrder.first_name} {selectedOrder.last_name}</span>
+                    <span className="font-medium">{selectedOrder.first_name || ''} {selectedOrder.last_name || ''}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Email:</span>
-                    <span>{selectedOrder.email}</span>
+                    <span>{selectedOrder.email || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Phone:</span>
-                    <span>{selectedOrder.phone}</span>
+                    <span>{selectedOrder.phone || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Address:</span>
-                    <span className="text-right">{selectedOrder.address}</span>
+                    <span className="text-right">{selectedOrder.address || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">City:</span>
-                    <span>{selectedOrder.city}</span>
+                    <span>{selectedOrder.city || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Postal Code:</span>
-                    <span>{selectedOrder.postal_code}</span>
+                    <span>{selectedOrder.postal_code || 'N/A'}</span>
                   </div>
                   {selectedOrder.notes && (
                     <div className="flex justify-between">

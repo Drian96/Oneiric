@@ -678,7 +678,7 @@ export const getProducts = async (): Promise<Product[]> => {
   throw new Error(response.message || 'Failed to load products');
 };
 
-export const getProductById = async (id: number): Promise<Product> => {
+export const getProductById = async (id: string | number): Promise<Product> => {
   const response = await apiRequest<Product>(`/products/${id}`);
   if (response.success && response.data) return response.data;
   throw new Error(response.message || 'Failed to load product');

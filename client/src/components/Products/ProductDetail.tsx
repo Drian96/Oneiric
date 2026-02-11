@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Heart, Share2 } from 'lucide-react';
-import { productService, reviewService, type Product as DbProduct, type ProductImage, type ProductReview, type ProductReviewStats } from '../../services/supabase';
+import { productService, reviewService, type ProductImage, type ProductReview, type ProductReviewStats } from '../../services/supabase';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCartAnimation } from '../../contexts/CartAnimationContext';
-import { buildShopPath } from '../../services/api';
+import { buildShopPath, getProductById as getApiProductById, type Product as ApiProduct } from '../../services/api';
 import { useShop } from '../../contexts/ShopContext';
 import { isInWishlist, toggleWishlist } from '../../utils/wishlist';
 import { is3DModel } from '../../utils/modelUtils';
@@ -17,8 +17,10 @@ const ProductDetail = () => {
   const { id } = useParams();
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
-  const [product, setProduct] = useState<DbProduct | null>(null);
+  const [product, setProduct] = useState<ApiProduct | null>(null);
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [reviewStats, setReviewStats] = useState<ProductReviewStats | null>(null);
   const [loadingReviews, setLoadingReviews] = useState(false);
@@ -34,21 +36,28 @@ const ProductDetail = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (!id || !shop?.id) return;
-      const p = await productService.getProductById(id, shop.id);
-      if (p) {
+      if (!id || !shop?.id) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const p = await getApiProductById(id);
         setProduct(p);
-        setImages(await productService.getProductImages(p.id));
+        const productId = String(p.id);
+        setImages(await productService.getProductImages(productId));
         
         // Check if product is in wishlist
-        setIsWishlisted(isInWishlist(p.id));
+        setIsWishlisted(isInWishlist(productId));
         
         // Load reviews
         setLoadingReviews(true);
         try {
           const [reviewsData, statsData] = await Promise.all([
-            reviewService.getProductReviews(p.id, shop.id),
-            reviewService.getProductReviewStats(p.id, shop.id)
+            reviewService.getProductReviews(productId, shop.id),
+            reviewService.getProductReviewStats(productId, shop.id)
           ]);
           setReviews(reviewsData);
           setReviewStats(statsData);
@@ -57,6 +66,13 @@ const ProductDetail = () => {
         } finally {
           setLoadingReviews(false);
         }
+      } catch (error: any) {
+        console.error('Failed to load product detail:', error);
+        setLoadError(error?.message || 'Failed to load product.');
+        setProduct(null);
+        setImages([]);
+      } finally {
+        setLoading(false);
       }
     };
     load();
@@ -94,7 +110,7 @@ const ProductDetail = () => {
       navigate(buildShopPath('login'));
       return;
     }
-    const newState = toggleWishlist(product.id);
+    const newState = toggleWishlist(String(product.id));
     setIsWishlisted(newState);
   };
 
@@ -167,7 +183,7 @@ const ProductDetail = () => {
     }
     
     const firstImage = images[0]?.image_url;
-    addItem({ productId: product.id, name: product.name, price: product.price, imageUrl: firstImage }, quantity);
+    addItem({ productId: String(product.id), name: product.name, price: product.price, imageUrl: firstImage }, quantity);
   };
 
   const handleBuyNow = () => {
@@ -197,7 +213,7 @@ const ProductDetail = () => {
     
     // Add item to cart and redirect to checkout
     const firstImage = images[0]?.image_url;
-    addItem({ productId: product.id, name: product.name, price: product.price, imageUrl: firstImage }, quantity);
+    addItem({ productId: String(product.id), name: product.name, price: product.price, imageUrl: firstImage }, quantity);
     navigate(buildShopPath('checkout'));
   };
 
@@ -222,6 +238,14 @@ const ProductDetail = () => {
           Back to Products
         </Link>
 
+        {loading ? (
+          <div className="py-16 text-center text-dgray">Loading product details...</div>
+        ) : loadError ? (
+          <div className="py-16 text-center">
+            <h2 className="text-2xl font-semibold text-dgreen mb-2">Unable to load product</h2>
+            <p className="text-dgray">{loadError}</p>
+          </div>
+        ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Product Images */}
           <div className="space-y-4">
@@ -385,6 +409,7 @@ const ProductDetail = () => {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Reviews Section */}

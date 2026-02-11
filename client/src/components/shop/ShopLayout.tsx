@@ -43,12 +43,18 @@ const ShopLayout = () => {
   }, [shopSlug]);
 
   useEffect(() => {
-    if (!shop) return;
     const root = document.documentElement;
-    if (shop.theme_primary) root.style.setProperty('--brand-primary', shop.theme_primary);
-    if (shop.theme_secondary) root.style.setProperty('--brand-secondary', shop.theme_secondary);
-    if (shop.theme_accent) root.style.setProperty('--brand-accent', shop.theme_accent);
-    if (shop.name) document.title = shop.name;
+    if (!shop) {
+      root.style.setProperty('--brand-primary', '#0A400C');
+      root.style.setProperty('--brand-secondary', '#708A58');
+      root.style.setProperty('--brand-accent', '#B1AB86');
+      return;
+    }
+
+    root.style.setProperty('--brand-primary', shop.theme_primary || '#0A400C');
+    root.style.setProperty('--brand-secondary', shop.theme_secondary || '#708A58');
+    root.style.setProperty('--brand-accent', shop.theme_accent || '#B1AB86');
+    if (shop.name) document.title = `${shop.name} | Oneiric`;
   }, [shop]);
 
   if (isLoading) {

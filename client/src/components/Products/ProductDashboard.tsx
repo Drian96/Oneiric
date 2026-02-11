@@ -22,7 +22,10 @@ const ProductDashboard: React.FC<ProductDashboardProps> = ({ searchQuery = '', i
       
       {/* Sort Dropdown */}
       <div className="flex justify-between items-center mb-8">
-        <h2 className="text-2xl font-serif font-bold text-dgreen">
+        <h2
+          className="text-2xl font-serif font-bold"
+          style={{ color: 'var(--brand-primary)' }}
+        >
           {searchQuery.trim() 
             ? `Search Results for "${searchQuery}"` 
             : selectedCategory === 'All' 

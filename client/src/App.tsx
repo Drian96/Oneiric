@@ -45,10 +45,11 @@ const App = () => {
               <Route path="/platform/*" element={<Navigate to="/" replace />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<BuyerDashboard />} />
+                <Route path="/profile" element={<UserProfile />} />
               </Route>
 
               <Route path="/:shopSlug" element={<ShopLayout />}>
-                <Route index element={<Home />} />
+                <Route index element={<Products />} />
                 <Route path="signup" element={<SignUp />} />
                 <Route path="login" element={<Login />} />
                 <Route path="auth/callback" element={<AuthCallback />} />

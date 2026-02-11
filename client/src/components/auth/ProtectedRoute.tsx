@@ -34,6 +34,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, redirectT
 
   if (allowedRoles && user) {
     if (shopSlug) {
+      // Customers are global users and may not have shop memberships.
+      // If customer access is allowed for this route, permit by user role.
+      if (allowedRoles.includes('customer') && user.role === 'customer') {
+        return <Outlet />;
+      }
+
       const membership = memberships.find((m) => m.slug === shopSlug);
       if (!membership || !allowedRoles.includes(membership.role)) {
         return <Navigate to={`/${shopSlug}`} replace />;
