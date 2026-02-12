@@ -4,9 +4,12 @@ const router = express.Router();
 // Import order controller
 const {
   createOrder,
+  getAllOrders,
   getUserOrders,
   getOrderById,
-  updateOrderStatus
+  updateOrderStatus,
+  deleteOrder,
+  deleteCompletedOrders,
 } = require('../controllers/orderController');
 
 // Import authentication middleware
@@ -57,6 +60,7 @@ const { resolveShop, requireShop } = require('../middleware/tenant');
  * - authenticateToken: Verifies JWT token
  */
 router.post('/', resolveShop, requireShop, authenticateToken, auditLogger('Create Order', 'Orders', 'Order placed'), createOrder);
+router.get('/', resolveShop, requireShop, authenticateToken, getAllOrders);
 
 /**
  * GET /api/orders/user/:userId
@@ -153,5 +157,7 @@ router.get('/:id', resolveShop, requireShop, authenticateToken, getOrderById);
  * - authenticateToken: Verifies JWT token
  */
 router.put('/:id/status', resolveShop, requireShop, authenticateToken, auditLogger('Update Order Status', 'Orders', 'Order status changed'), updateOrderStatus);
+router.delete('/cleanup/completed', resolveShop, requireShop, authenticateToken, auditLogger('Cleanup Orders', 'Orders', 'Cleaned up completed orders'), deleteCompletedOrders);
+router.delete('/:id', resolveShop, requireShop, authenticateToken, auditLogger('Delete Order', 'Orders', 'Deleted order'), deleteOrder);
 
 module.exports = router;

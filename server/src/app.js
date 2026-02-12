@@ -106,7 +106,7 @@ app.use(cors({
     callback(null, true);
   },
   credentials: true, // Allow cookies and authentication headers
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allowed HTTP methods
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Allowed HTTP methods
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Slug'] // Allowed headers
 }));
 
@@ -176,9 +176,17 @@ app.use(`${API_PREFIX}/shops`, shopRoutes);
 const productRoutes = require('./routes/products');
 app.use(`${API_PREFIX}/products`, productRoutes);
 
+// Review moderation routes
+const reviewRoutes = require('./routes/reviews');
+app.use(`${API_PREFIX}/reviews`, reviewRoutes);
+
 // Order management routes
 const orderRoutes = require('./routes/orders');
 app.use(`${API_PREFIX}/orders`, orderRoutes);
+
+// Notification routes
+const notificationRoutes = require('./routes/notifications');
+app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 
 // Root endpoint - API information
 app.get('/', (req, res) => {

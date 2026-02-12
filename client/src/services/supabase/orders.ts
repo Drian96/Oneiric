@@ -6,9 +6,6 @@
 import { supabase } from './client';
 import type { Order, OrderItem, CreateOrderData } from './types';
 
-// Import notificationService dynamically to avoid circular dependency
-const getNotificationService = () => import('./notifications').then(m => m.notificationService);
-
 export const orderService = {
   // Create a new order with items
   async createOrder(orderData: CreateOrderData, shopId?: string): Promise<Order> {
@@ -64,22 +61,6 @@ export const orderService = {
       }
 
       console.log('✅ Order items created successfully');
-      
-      // Create a notification for the user about their new order
-      try {
-        const notificationService = await getNotificationService();
-        await notificationService.createNotification({
-          user_id: orderData.user_id,
-          title: 'Order Confirmed',
-          message: `Your order #${order.order_number} has been confirmed. Total: ₱${orderData.total_amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
-          type: 'order',
-          link: `/orders/${order.id}`,
-          metadata: { order_id: order.id, order_number: order.order_number },
-        });
-      } catch (notifError) {
-        // Don't fail the order creation if notification fails
-        console.warn('⚠️ Failed to create order notification:', notifError);
-      }
       
       return order as Order;
     } catch (error) {

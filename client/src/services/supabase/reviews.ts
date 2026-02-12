@@ -67,26 +67,23 @@ export const reviewService = {
   // Get review statistics for a product
   async getProductReviewStats(productId: string, shopId?: string): Promise<ProductReviewStats | null> {
     try {
-      let query = supabase
+      const query = supabase
         .from('product_review_stats')
         .select('*')
-        .eq('product_id', productId);
+        .eq('product_id', productId)
+        .limit(1);
 
-      if (shopId) {
-        query = query.eq('shop_id', shopId);
-      }
-
-      const { data, error } = await query.single();
+      const { data, error } = await query;
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          // No reviews found
-          return null;
-        }
         throw new Error(`Failed to fetch review stats: ${error.message}`);
       }
 
-      return data;
+      if (!data || data.length === 0) {
+        return null;
+      }
+
+      return data[0] as ProductReviewStats;
     } catch (error) {
       console.error('Error fetching review stats:', error);
       throw error;

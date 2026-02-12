@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search, Star, Eye, Trash2, X, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { reviewService, ProductReview } from '../../services/supabase';
+import {
+  deleteAdminReview,
+  getAdminReviews,
+  type AdminReview,
+  updateAdminReviewStatus,
+} from '../../services/api';
 import { useShop } from '../../contexts/ShopContext';
 
 // Rates and reviews management component for admin
@@ -10,7 +15,7 @@ const AdminRatesReviews = () => {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [selectedReview, setSelectedReview] = useState<any>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [reviews, setReviews] = useState<ProductReview[]>([]);
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalReviews: 0,
@@ -27,7 +32,7 @@ const AdminRatesReviews = () => {
   const loadReviews = async () => {
     try {
       setLoading(true);
-      const allReviews = await reviewService.getAllReviews(shop?.id);
+      const allReviews = await getAdminReviews();
       setReviews(allReviews);
       
       // Calculate stats
@@ -53,7 +58,7 @@ const AdminRatesReviews = () => {
 
   const handleApproveReview = async (reviewId: string) => {
     try {
-      await reviewService.approveReview(reviewId);
+      await updateAdminReviewStatus(reviewId, 'approved');
       await loadReviews();
       alert('Review approved successfully.');
     } catch (error) {
@@ -64,7 +69,7 @@ const AdminRatesReviews = () => {
 
   const handleRejectReview = async (reviewId: string) => {
     try {
-      await reviewService.rejectReview(reviewId);
+      await updateAdminReviewStatus(reviewId, 'rejected');
       await loadReviews();
       alert('Review rejected successfully.');
     } catch (error) {
@@ -73,7 +78,7 @@ const AdminRatesReviews = () => {
     }
   };
 
-  const handleDeleteReview = (review: ProductReview) => {
+  const handleDeleteReview = (review: AdminReview) => {
     setSelectedReview(review);
     setShowDeleteConfirm(true);
   };
@@ -82,7 +87,7 @@ const AdminRatesReviews = () => {
     if (!selectedReview) return;
     
     try {
-      await reviewService.deleteReview(selectedReview.id);
+      await deleteAdminReview(selectedReview.id);
       await loadReviews();
       setShowDeleteConfirm(false);
       setSelectedReview(null);
@@ -195,7 +200,7 @@ const AdminRatesReviews = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="font-semibold text-dgreen">
-                      {(review as any).users?.first_name} {(review as any).users?.last_name}
+                      {review.user_first_name || 'Unknown'} {review.user_last_name || 'User'}
                     </h3>
                     <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
                       Verified Purchase
@@ -209,7 +214,7 @@ const AdminRatesReviews = () => {
                        review.status === 'pending' ? 'Pending' : 'Rejected'}
                     </span>
                   </div>
-                  <p className="text-sm text-dgray mb-1">Product: {(review as any).products?.name}</p>
+                  <p className="text-sm text-dgray mb-1">Product: {review.product_name || 'Unknown Product'}</p>
                   <p className="text-sm text-dgray mb-1">Order ID: {review.order_id}</p>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="flex">{renderStars(review.rating)}</div>

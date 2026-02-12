@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Search, X, Eye, CheckCircle, XCircle, Truck, Package, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { orderService, Order } from '../../services/supabase';
+import {
+  cleanupCompletedOrders,
+  deleteOrderById,
+  getAdminOrders,
+  getOrderById,
+  type Order,
+  updateOrderStatus,
+} from '../../services/api';
 import { useShop } from '../../contexts/ShopContext';
 
 // Orders management component for admin
@@ -40,9 +47,9 @@ const AdminOrders = () => {
     if (searchTerm) {
       filtered = filtered.filter(order => 
         order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.email.toLowerCase().includes(searchTerm.toLowerCase())
+        (order.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.email || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -58,7 +65,7 @@ const AdminOrders = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const allOrders = await orderService.getAllOrders(shop?.id);
+      const allOrders = await getAdminOrders();
       setOrders(allOrders);
     } catch (error) {
       console.error('Failed to load orders:', error);
@@ -70,7 +77,7 @@ const AdminOrders = () => {
   const handleStatusUpdate = async (orderId: number, newStatus: Order['status']) => {
     try {
       setUpdatingStatus(orderId);
-      await orderService.updateOrderStatus(orderId, newStatus, shop?.id);
+      await updateOrderStatus(orderId, newStatus);
       await loadOrders(); // Refresh orders
       setShowNotification({ type: 'success', message: 'Order status updated successfully.' });
     } catch (error) {
@@ -90,7 +97,7 @@ const AdminOrders = () => {
   const loadOrderItems = async (orderId: number) => {
     try {
       setLoadingOrderItems(true);
-      const orderDetails = await orderService.getOrderWithDetails(orderId, shop?.id);
+      const orderDetails = await getOrderById(orderId);
       setOrderItems(orderDetails.items);
     } catch (error) {
       console.error('Failed to load order items:', error);
@@ -150,10 +157,10 @@ const AdminOrders = () => {
 
       if (action === 'approve') {
         // Update order status to cancelled (refunded)
-        await orderService.updateOrderStatus(request.order.id, 'cancelled', shop?.id);
+        await updateOrderStatus(request.order.id, 'cancelled');
       } else {
         // Update order status back to delivered
-        await orderService.updateOrderStatus(request.order.id, 'delivered', shop?.id);
+        await updateOrderStatus(request.order.id, 'delivered');
       }
       
       // Refresh orders and return requests
@@ -179,7 +186,7 @@ const AdminOrders = () => {
 
     try {
       setDeletingOrder(orderToDelete.id);
-      await orderService.deleteOrder(orderToDelete.id, shop?.id);
+      await deleteOrderById(orderToDelete.id);
       await loadOrders(); // Refresh orders
       setShowDeleteModal(false);
       setOrderToDelete(null);
@@ -201,7 +208,7 @@ const AdminOrders = () => {
   const confirmCleanup = async () => {
     try {
       setCleaningUp(true);
-      const deletedCount = await orderService.deleteCompletedOrders(selectedRetentionDays, shop?.id);
+      const { deletedCount } = await cleanupCompletedOrders(selectedRetentionDays);
       await loadOrders(); // Refresh orders
       setShowCleanupModal(false);
       setShowNotification({ 
@@ -478,7 +485,7 @@ const AdminOrders = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Payment Method:</span>
-                    <span className="capitalize">{selectedOrder.payment_method.replace('_', ' ')}</span>
+                    <span className="capitalize">{(selectedOrder.payment_method || 'N/A').replace('_', ' ')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Order Date:</span>

@@ -117,19 +117,47 @@ const ADMIN_ROLES = ['admin', 'manager', 'staff'];
 
 const fetchShopAdmins = async (shopId) => {
   try {
-    const admins = await sequelize.query(
+    const adminsFromMembership = await sequelize.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, sm.role
          FROM public.shop_members sm
          JOIN public.users u ON u.id = sm.user_id
         WHERE sm.shop_id = :shop_id
           AND sm.status = 'active'
-          AND sm.role = ANY(:roles)`,
+          AND sm.role IN (:roles)
+          AND u.status = 'active'`,
       {
         type: QueryTypes.SELECT,
         replacements: { shop_id: shopId, roles: ADMIN_ROLES },
       }
     );
-    return admins;
+
+    if (adminsFromMembership.length > 0) {
+      return adminsFromMembership;
+    }
+
+    // Compatibility fallback:
+    // Some existing shops may have legacy admins with user.role + last_shop_id set
+    // but missing shop_members rows. This keeps notifications working while data
+    // is being normalized.
+    const adminsFromLegacyUsers = await sequelize.query(
+      `SELECT u.id, u.first_name, u.last_name, u.email, u.role
+         FROM public.users u
+        WHERE u.last_shop_id = :shop_id
+          AND u.status = 'active'
+          AND u.role IN (:roles)`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { shop_id: shopId, roles: ADMIN_ROLES },
+      }
+    );
+
+    if (adminsFromLegacyUsers.length > 0) {
+      console.warn(
+        `⚠️ Notification fallback used for shop ${shopId}: found ${adminsFromLegacyUsers.length} admin(s) via users.last_shop_id.`
+      );
+    }
+
+    return adminsFromLegacyUsers;
   } catch (error) {
     console.error('❌ Failed to fetch admin users for notifications:', error.message);
     return [];
@@ -137,9 +165,10 @@ const fetchShopAdmins = async (shopId) => {
 };
 
 const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount, customerName, event, shopId }) => {
+  console.log(`🔔 Creating admin order notifications for shop ${shopId} (event: ${event}, order: ${orderNumber})`);
   const admins = await fetchShopAdmins(shopId);
   if (admins.length === 0) {
-    console.warn('⚠️ No admin users found to notify.');
+    console.warn(`⚠️ No admin users found to notify for shop ${shopId}.`);
     return;
   }
 
@@ -181,6 +210,7 @@ const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount,
       })
     )
   );
+  console.log(`✅ Admin notifications created for ${admins.length} recipient(s) on order ${orderNumber}`);
 };
 
 module.exports = {

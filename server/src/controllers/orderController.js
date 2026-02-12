@@ -30,6 +30,14 @@ const canAccessOrder = ({ actorUserId, actorRole, orderOwnerId }) => {
   return Number(orderOwnerId) === Number(actorUserId);
 };
 
+const ensureStaffActor = async ({ shopId, actorUserId, errorMessage = 'Only shop staff can access this endpoint.' }) => {
+  const actorRole = await getActiveShopMembershipRole(shopId, actorUserId);
+  if (!STAFF_ROLES.has(actorRole)) {
+    return { allowed: false, actorRole };
+  }
+  return { allowed: true, actorRole };
+};
+
 /**
  * Order Controller
  * Handles order creation and management operations
@@ -304,6 +312,75 @@ exports.getUserOrders = async (req, res) => {
 };
 
 /**
+ * Get all orders for shop staff
+ * GET /api/orders
+ */
+exports.getAllOrders = async (req, res) => {
+  try {
+    const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const { allowed } = await ensureStaffActor({
+      shopId,
+      actorUserId,
+      errorMessage: 'Only shop staff can view all orders.',
+    });
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only shop staff can view all orders.',
+      });
+    }
+
+    console.log(`🔄 Fetching all orders for shop ${shopId}...`);
+
+    const orders = await sequelize.query(
+      `SELECT
+         o.id,
+         o.user_id,
+         o.order_number,
+         o.total_amount,
+         o.status,
+         o.first_name,
+         o.last_name,
+         o.email,
+         o.phone,
+         o.address,
+         o.city,
+         o.postal_code,
+         o.notes,
+         o.payment_method,
+         o.created_at,
+         o.updated_at,
+         COUNT(oi.id)::int AS item_count
+       FROM public.orders o
+       LEFT JOIN public.order_items oi ON oi.order_id = o.id
+       WHERE o.shop_id = :shop_id
+       GROUP BY
+         o.id, o.user_id, o.order_number, o.total_amount, o.status,
+         o.first_name, o.last_name, o.email, o.phone, o.address,
+         o.city, o.postal_code, o.notes, o.payment_method, o.created_at, o.updated_at
+       ORDER BY o.created_at DESC`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { shop_id: shopId },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    console.error('❌ Get all orders error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
+    });
+  }
+};
+
+/**
  * Get single order with items
  * GET /api/orders/:id
  */
@@ -370,7 +447,6 @@ exports.getOrderById = async (req, res) => {
       JOIN public.products p ON p.id = oi.product_id
       LEFT JOIN public.product_images pi
         ON pi.product_id = oi.product_id
-       AND pi.shop_id = oi.shop_id
        AND pi.is_primary = true
       WHERE oi.order_id = :id AND oi.shop_id = :shop_id`,
       { 
@@ -511,6 +587,113 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update order status'
+    });
+  }
+};
+
+/**
+ * Delete order (staff only)
+ * DELETE /api/orders/:id
+ */
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const { allowed } = await ensureStaffActor({
+      shopId,
+      actorUserId,
+      errorMessage: 'Only shop staff can delete orders.',
+    });
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only shop staff can delete orders.',
+      });
+    }
+
+    const deleted = await sequelize.query(
+      `DELETE FROM public.orders
+       WHERE id = :id
+         AND shop_id = :shop_id`,
+      {
+        type: QueryTypes.DELETE,
+        replacements: { id, shop_id: shopId },
+      }
+    );
+
+    if (!deleted || (Array.isArray(deleted) && deleted[1] === 0)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order deleted successfully',
+    });
+  } catch (error) {
+    console.error('❌ Delete order error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete order',
+    });
+  }
+};
+
+/**
+ * Delete completed/cancelled orders older than retention days (staff only)
+ * DELETE /api/orders/cleanup/completed?retentionDays=30
+ */
+exports.deleteCompletedOrders = async (req, res) => {
+  try {
+    const shopId = req.shop?.id;
+    const actorUserId = req.user?.id;
+    const { allowed } = await ensureStaffActor({
+      shopId,
+      actorUserId,
+      errorMessage: 'Only shop staff can cleanup orders.',
+    });
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only shop staff can cleanup orders.',
+      });
+    }
+
+    const rawRetention = Number(req.query.retentionDays);
+    const retentionDays = Number.isFinite(rawRetention)
+      ? Math.min(Math.max(rawRetention, 1), 3650)
+      : 30;
+
+    const deletedRows = await sequelize.query(
+      `DELETE FROM public.orders
+       WHERE shop_id = :shop_id
+         AND status IN ('delivered', 'cancelled')
+         AND updated_at < (NOW() - (:retention_days || ' days')::interval)
+       RETURNING id`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: {
+          shop_id: shopId,
+          retention_days: String(retentionDays),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Completed orders cleaned up successfully',
+      data: { deletedCount: deletedRows.length, retentionDays },
+    });
+  } catch (error) {
+    console.error('❌ Delete completed orders error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup completed orders',
     });
   }
 };

@@ -20,52 +20,71 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [channelNonce, setChannelNonce] = useState(0);
   const { isAuthenticated, user } = useAuth();
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const lastRefreshAtRef = useRef(0);
+  const retryAttemptsRef = useRef(0);
+  const MIN_REFRESH_INTERVAL_MS = 1200;
 
   // Function to refresh notifications from the database
-  const refreshNotifications = useCallback(async () => {
+  const refreshNotifications = useCallback(async (force = false) => {
     if (!isAuthenticated || !user?.id) {
       setNotifications([]);
       setUnreadCount(0);
       return;
     }
 
-    try {
-      setLoading(true);
-      console.log('🔄 Fetching notifications for user:', user.id);
-      
-      // Fetch notifications and unread count in parallel
-      const [notifs, unread] = await Promise.all([
-        notificationService.getNotifications(user.id),
-        notificationService.getUnreadCount(user.id),
-      ]);
-      
-      console.log('✅ Notifications fetched:', notifs.length, 'unread:', unread);
-      setNotifications(notifs);
-      setUnreadCount(unread);
-    } catch (error) {
-      console.error('❌ Failed to refresh notifications:', error);
-      // Set empty arrays on error so UI doesn't break
-      setNotifications([]);
-      setUnreadCount(0);
-    } finally {
-      setLoading(false);
+    const now = Date.now();
+    if (!force && refreshInFlightRef.current) {
+      await refreshInFlightRef.current;
+      return;
     }
+    if (!force && now - lastRefreshAtRef.current < MIN_REFRESH_INTERVAL_MS) {
+      return;
+    }
+
+    const refreshPromise = (async () => {
+      try {
+        setLoading(true);
+        console.log('🔄 Fetching notifications for user:', user.id);
+
+        // Single request: unread count is derived locally to avoid duplicate requests.
+        const notifs = await notificationService.getNotifications(user.id);
+        const unread = notifs.reduce((acc, n) => acc + (n.read ? 0 : 1), 0);
+
+        console.log('✅ Notifications fetched:', notifs.length, 'unread:', unread);
+        setNotifications(notifs);
+        setUnreadCount(unread);
+        lastRefreshAtRef.current = Date.now();
+      } catch (error) {
+        console.error('❌ Failed to refresh notifications:', error);
+        // Set empty arrays on error so UI doesn't break
+        setNotifications([]);
+        setUnreadCount(0);
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    refreshInFlightRef.current = refreshPromise;
+    await refreshPromise;
+    refreshInFlightRef.current = null;
   }, [isAuthenticated, user?.id]);
 
   // Set up Supabase Realtime subscription for real-time notifications
   // This is the modern/professional way - uses WebSocket connection instead of polling
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
-      // Load notifications once when user logs in
-      refreshNotifications();
+      setNotifications([]);
+      setUnreadCount(0);
+      retryAttemptsRef.current = 0;
       return;
     }
 
     // Initial load
-    refreshNotifications();
-
-    let fallbackInterval: NodeJS.Timeout | undefined;
+    refreshNotifications(true);
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Set up Supabase Realtime subscription
     // This listens for INSERT events on the notifications table for this user
@@ -81,9 +100,18 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         },
         (payload) => {
           console.log('🔔 New notification received via Realtime:', payload.new);
-          // Add the new notification to the list
-          setNotifications((prev) => [payload.new as Notification, ...prev]);
-          setUnreadCount((prev) => prev + 1);
+          // Upsert into list to avoid duplicates during reconnect/replay.
+          setNotifications((prev) => {
+            const incoming = payload.new as Notification;
+            const exists = prev.some((notif) => notif.id === incoming.id);
+            const next = exists
+              ? prev.map((notif) => (notif.id === incoming.id ? incoming : notif))
+              : [incoming, ...prev];
+            return next;
+          });
+          if (!(payload.new as Notification).read) {
+            setUnreadCount((prev) => prev + 1);
+          }
         }
       )
       .on(
@@ -96,16 +124,14 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         },
         (payload) => {
           console.log('🔄 Notification updated via Realtime:', payload.new);
-          // Update the notification in the list
-          setNotifications((prev) =>
-            prev.map((notif) =>
+          // Recompute unread count from local state for robustness
+          setNotifications((prev) => {
+            const next = prev.map((notif) =>
               notif.id === payload.new.id ? (payload.new as Notification) : notif
-            )
-          );
-          // Update unread count if read status changed
-          if (payload.old.read !== payload.new.read) {
-            setUnreadCount((prev) => (payload.new.read ? Math.max(0, prev - 1) : prev + 1));
-          }
+            );
+            setUnreadCount(next.reduce((acc, notif) => acc + (notif.read ? 0 : 1), 0));
+            return next;
+          });
         }
       )
       .on(
@@ -119,22 +145,43 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         (payload) => {
           console.log('🗑️ Notification deleted via Realtime:', payload.old.id);
           // Remove the notification from the list
-          setNotifications((prev) => prev.filter((notif) => notif.id !== payload.old.id));
-          // Update unread count if it was unread
-          if (!payload.old.read) {
-            setUnreadCount((prev) => Math.max(0, prev - 1));
-          }
+          setNotifications((prev) => {
+            const next = prev.filter((notif) => notif.id !== payload.old.id);
+            setUnreadCount(next.reduce((acc, notif) => acc + (notif.read ? 0 : 1), 0));
+            return next;
+          });
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Subscribed to real-time notifications');
+          retryAttemptsRef.current = 0;
+          // Ensure we are synced after resubscribe/reconnect.
+          refreshNotifications(true);
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ Error subscribing to notifications');
-          // Fallback to polling if Realtime fails
-          fallbackInterval = setInterval(() => {
-            refreshNotifications();
-          }, 30000);
+          if (retryAttemptsRef.current < 5 && !retryTimer) {
+            retryAttemptsRef.current += 1;
+            retryTimer = setTimeout(() => {
+              setChannelNonce((prev) => prev + 1);
+            }, 2500);
+          }
+        } else if (status === 'TIMED_OUT') {
+          console.warn('⚠️ Notification realtime timed out; waiting for automatic reconnect.');
+          if (retryAttemptsRef.current < 5 && !retryTimer) {
+            retryAttemptsRef.current += 1;
+            retryTimer = setTimeout(() => {
+              setChannelNonce((prev) => prev + 1);
+            }, 2500);
+          }
+        } else if (status === 'CLOSED') {
+          console.warn('⚠️ Notification realtime channel closed.');
+          if (retryAttemptsRef.current < 5 && !retryTimer) {
+            retryAttemptsRef.current += 1;
+            retryTimer = setTimeout(() => {
+              setChannelNonce((prev) => prev + 1);
+            }, 2500);
+          }
         }
       });
 
@@ -142,9 +189,33 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       console.log('🔌 Unsubscribing from notifications');
       supabase.removeChannel(channel);
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
       }
+    };
+  }, [isAuthenticated, user?.id, refreshNotifications, channelNonce]);
+
+  // Refresh notifications when tab gains focus or becomes visible.
+  // This is event-driven (not polling) and helps recover from missed realtime events.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+
+    const onFocus = () => {
+      refreshNotifications(true);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshNotifications(true);
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [isAuthenticated, user?.id, refreshNotifications]);
 

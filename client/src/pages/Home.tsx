@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Header from "../components/Home/HeaderRight";
-import Footer from "../shared/Footer";
+import Footer from "../components/Home/HomeFooter";
 import Hero from "../components/Home/Hero";
 import FeaturedProducts from "../components/Home/FeaturedProducts";
 import Testimonials from "../components/Home/Testimonials";

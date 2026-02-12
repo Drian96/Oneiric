@@ -198,6 +198,34 @@ export interface CustomerSummaryResponse {
   }>;
 }
 
+export interface AppNotification {
+  id: string;
+  user_id: number;
+  shop_id?: string | null;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error' | 'order' | 'promotion';
+  read: boolean;
+  link: string | null;
+  metadata: Record<string, any> | null;
+  created_at: string;
+}
+
+export interface AdminReview {
+  id: string;
+  order_id: number;
+  product_id: string | number;
+  user_id: number;
+  rating: number;
+  comment?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  updated_at: string;
+  user_first_name?: string | null;
+  user_last_name?: string | null;
+  product_name?: string | null;
+}
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // Helper functions for API communication
@@ -549,6 +577,70 @@ export const getCustomerSummary = async (): Promise<CustomerSummaryResponse> => 
   throw new Error(response.message || 'Failed to load summary');
 };
 
+export const getNotifications = async (): Promise<AppNotification[]> => {
+  const response = await apiRequest<AppNotification[]>('/notifications');
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to load notifications');
+};
+
+export const getUnreadNotificationCount = async (): Promise<number> => {
+  const response = await apiRequest<{ count: number }>('/notifications/unread-count');
+  if (response.success && response.data) return response.data.count || 0;
+  throw new Error(response.message || 'Failed to load unread notification count');
+};
+
+export const markNotificationAsRead = async (notificationId: string): Promise<AppNotification> => {
+  const response = await apiRequest<AppNotification>(`/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  });
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to update notification');
+};
+
+export const markAllNotificationsAsRead = async (): Promise<number> => {
+  const response = await apiRequest<{ updated: number }>('/notifications/read-all', {
+    method: 'PATCH',
+  });
+  if (response.success && response.data) return response.data.updated || 0;
+  throw new Error(response.message || 'Failed to update notifications');
+};
+
+export const deleteNotificationById = async (notificationId: string): Promise<void> => {
+  const response = await apiRequest(`/notifications/${notificationId}`, {
+    method: 'DELETE',
+  });
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to delete notification');
+  }
+};
+
+export const getAdminReviews = async (): Promise<AdminReview[]> => {
+  const response = await apiRequest<AdminReview[]>('/reviews');
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to fetch reviews');
+};
+
+export const updateAdminReviewStatus = async (
+  reviewId: string,
+  status: 'pending' | 'approved' | 'rejected'
+): Promise<AdminReview> => {
+  const response = await apiRequest<AdminReview>(`/reviews/${reviewId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to update review');
+};
+
+export const deleteAdminReview = async (reviewId: string): Promise<void> => {
+  const response = await apiRequest(`/reviews/${reviewId}`, {
+    method: 'DELETE',
+  });
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to delete review');
+  }
+};
+
 // ============================================================================
 // HEALTH CHECK
 // Function to check if API is running
@@ -774,10 +866,20 @@ export interface CreateOrderRequest {
 
 export interface Order {
   id: number;
+  user_id?: number;
   order_number: string;
   total_amount: number;
   status: string;
-  shipping_address?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  notes?: string;
+  payment_method?: string;
+  item_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -791,6 +893,11 @@ export interface OrderWithItems extends Order {
     product_name: string;
     product_category: string;
   }>;
+}
+
+export interface AdminOrderCleanupResponse {
+  deletedCount: number;
+  retentionDays: number;
 }
 
 export const createOrder = async (orderData: CreateOrderRequest): Promise<Order> => {
@@ -808,6 +915,12 @@ export const getUserOrders = async (userId: number): Promise<Order[]> => {
   throw new Error(response.message || 'Failed to load user orders');
 };
 
+export const getAdminOrders = async (): Promise<Order[]> => {
+  const response = await apiRequest<Order[]>('/orders');
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to load orders');
+};
+
 export const getOrderById = async (orderId: number): Promise<OrderWithItems> => {
   const response = await apiRequest<OrderWithItems>(`/orders/${orderId}`);
   if (response.success && response.data) return response.data;
@@ -821,6 +934,23 @@ export const updateOrderStatus = async (orderId: number, status: string): Promis
   });
   if (response.success && response.data) return response.data;
   throw new Error(response.message || 'Failed to update order status');
+};
+
+export const deleteOrderById = async (orderId: number): Promise<void> => {
+  const response = await apiRequest(`/orders/${orderId}`, {
+    method: 'DELETE',
+  });
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to delete order');
+  }
+};
+
+export const cleanupCompletedOrders = async (retentionDays: number): Promise<AdminOrderCleanupResponse> => {
+  const response = await apiRequest<AdminOrderCleanupResponse>(`/orders/cleanup/completed?retentionDays=${retentionDays}`, {
+    method: 'DELETE',
+  });
+  if (response.success && response.data) return response.data;
+  throw new Error(response.message || 'Failed to cleanup completed orders');
 };
 
 export interface AuditLogItem {

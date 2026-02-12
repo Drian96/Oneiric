@@ -81,12 +81,22 @@ const Header = () => {
   };
 
   // Handle notification click - mark as read and navigate if link exists
+  const resolveNotificationTarget = (rawLink: string): string => {
+    // Legacy compatibility: old notifications used /orders/:id which no longer exists.
+    if (/^\/orders\/\d+$/i.test(rawLink)) {
+      return buildShopPath('profile');
+    }
+
+    // Keep existing valid links untouched.
+    return rawLink;
+  };
+
   const handleNotificationClick = async (notification: typeof notifications[0]) => {
     if (!notification.read) {
       await markAsRead(notification.id);
     }
     if (notification.link) {
-      navigate(notification.link);
+      navigate(resolveNotificationTarget(notification.link));
       setShowNotifications(false);
     }
   };

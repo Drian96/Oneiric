@@ -46,6 +46,7 @@ const App = () => {
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<BuyerDashboard />} />
                 <Route path="/profile" element={<UserProfile />} />
+                <Route path="/orders/:id" element={<Navigate to="/profile" replace />} />
               </Route>
 
               <Route path="/:shopSlug" element={<ShopLayout />}>
@@ -63,6 +64,7 @@ const App = () => {
                 {/* Customer protected routes */}
                 <Route element={<ProtectedRoute allowedRoles={["customer", "admin", "manager", "staff"]} />}> 
                   <Route path="profile" element={<UserProfile />} />
+                  <Route path="orders/:id" element={<Navigate to="../profile" replace />} />
                 </Route>
 
                 {/* Admin area: allow admin, manager, staff */}
