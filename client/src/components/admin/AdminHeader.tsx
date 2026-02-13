@@ -56,12 +56,68 @@ const Header = () => {
     return date.toLocaleDateString();
   };
 
+  const formatCurrency = (amount?: number): string | null => {
+    if (typeof amount !== 'number' || Number.isNaN(amount)) return null;
+    return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const getOrderMeta = (notification: Notification) => {
+    const metadata = notification.metadata as Record<string, any> | null;
+    const message = notification.message || '';
+
+    const orderNumberFromMeta = typeof metadata?.order_number === 'string' ? metadata.order_number : null;
+    const orderNumberFromMessage = message.match(/#([A-Z0-9-]+)/i)?.[1] || null;
+    const orderNumber = orderNumberFromMeta || orderNumberFromMessage;
+
+    const totalFromMeta = typeof metadata?.total_amount === 'number' ? metadata.total_amount : undefined;
+    const totalFromMessage = message.match(/₱([0-9,]+(?:\.[0-9]{1,2})?)/)?.[1];
+    const totalAmount = totalFromMeta ?? (totalFromMessage ? Number(totalFromMessage.replace(/,/g, '')) : undefined);
+
+    const customerNameFromMeta = typeof metadata?.customer_name === 'string' ? metadata.customer_name : null;
+    const customerNameFromMessage = message.includes(' placed ')
+      ? (message.split(' placed ')[0] || null)
+      : null;
+    const customerName = customerNameFromMeta || customerNameFromMessage || notification.message || 'Customer';
+
+    const itemSummary = typeof metadata?.item_summary === 'string' ? metadata.item_summary : null;
+    const shortOrderId = orderNumber
+      ? `#${orderNumber.split('-').pop() || orderNumber}`
+      : null;
+
+    return {
+      customerName,
+      itemSummary,
+      totalText: formatCurrency(totalAmount),
+      shortOrderId,
+    };
+  };
+
+  const notificationItemSummary = (notification: Notification): string | null => {
+    const metadata = notification.metadata as Record<string, any> | null;
+    if (!metadata?.item_summary || typeof metadata.item_summary !== 'string') return null;
+    return metadata.item_summary;
+  };
+
+  const resolveNotificationTarget = (rawLink: string): string => {
+    // Legacy admin order link compatibility.
+    if (rawLink === '/admin/orders') {
+      return buildShopPath('admin?section=orders');
+    }
+
+    // Legacy buyer order detail link compatibility.
+    if (/^\/orders\/\d+$/i.test(rawLink)) {
+      return buildShopPath('profile');
+    }
+
+    return rawLink.startsWith('/') ? buildShopPath(rawLink) : rawLink;
+  };
+
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
       await markAsRead(notification.id);
     }
     if (notification.link) {
-      const target = notification.link.startsWith('/') ? buildShopPath(notification.link) : notification.link;
+      const target = resolveNotificationTarget(notification.link);
       navigate(target);
       setShowNotifications(false);
     }
@@ -140,8 +196,29 @@ const Header = () => {
                           </button>
                           <div className="flex justify-between items-start pr-6">
                             <div className="flex-1">
-                              <h5 className="text-sm font-medium text-gray-900">{notification.title}</h5>
-                              <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                              {notification.type === 'order' ? (
+                                <>
+                                  {(() => {
+                                    const orderMeta = getOrderMeta(notification);
+                                    return (
+                                      <>
+                                        <h5 className="text-sm font-semibold text-gray-900">📦 New Order: {orderMeta.customerName}</h5>
+                                        <p className="text-xs text-gray-600 mt-1">
+                                          Product: {orderMeta.itemSummary || notificationItemSummary(notification) || 'Order items available in details'}
+                                        </p>
+                                        <p className="text-xs text-dgreen mt-1 font-medium">
+                                          Total: {orderMeta.totalText || '—'} {orderMeta.shortOrderId ? ` | ID: ${orderMeta.shortOrderId}` : ''}
+                                        </p>
+                                      </>
+                                    );
+                                  })()}
+                                </>
+                              ) : (
+                                <>
+                                  <h5 className="text-sm font-medium text-gray-900">{notification.title}</h5>
+                                  <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                                </>
+                              )}
                               <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(notification.created_at)}</p>
                             </div>
                             {!notification.read && (

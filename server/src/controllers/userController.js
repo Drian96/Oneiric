@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const { hashPassword } = require('../utils/passwordUtils');
+const { sequelize } = require('../config/database');
+const { QueryTypes } = require('sequelize');
 
 // Allowed staff roles that admins can manage
 const MANAGEABLE_ROLES = ['admin', 'manager', 'staff'];
@@ -20,25 +22,74 @@ const sanitizeUser = (user) => ({
 // GET /api/v1/users
 const listUsers = async (req, res) => {
   try {
-    const users = await User.findAll({
-      attributes: [
-        'id',
-        'email',
-        'first_name',
-        'last_name',
-        'phone',
-        'role',
-        'status',
-        'last_login',
-        'created_at',
-        'updated_at',
-      ],
-      order: [['created_at', 'DESC']],
-    });
+    const shopId = req.shop?.id;
+    const users = await sequelize.query(
+      `WITH staff_users AS (
+         SELECT
+           u.id,
+           u.email,
+           u.first_name,
+           u.last_name,
+           u.phone,
+           sm.role::text AS role,
+           sm.status::text AS status,
+           u.last_login,
+           u.created_at,
+           u.updated_at
+         FROM public.shop_members sm
+         JOIN public.users u
+           ON u.id = sm.user_id
+        WHERE sm.shop_id = :shop_id
+       ),
+       ordering_customers AS (
+         SELECT DISTINCT ON (u.id)
+           u.id,
+           u.email,
+           u.first_name,
+           u.last_name,
+           u.phone,
+           'customer'::text AS role,
+           u.status::text AS status,
+           u.last_login,
+           u.created_at,
+           u.updated_at
+         FROM public.orders o
+         JOIN public.users u
+           ON u.id = o.user_id
+        WHERE o.shop_id = :shop_id
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.shop_members sm2
+            WHERE sm2.shop_id = :shop_id
+              AND sm2.user_id = u.id
+          )
+        ORDER BY u.id, o.created_at DESC
+       )
+       SELECT *
+       FROM (
+         SELECT * FROM staff_users
+         UNION ALL
+         SELECT * FROM ordering_customers
+       ) scoped_users
+       ORDER BY created_at DESC`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { shop_id: shopId },
+      }
+    );
 
     res.status(200).json({
       success: true,
-      data: { users: users.map(sanitizeUser) },
+      data: {
+        users: users.map((u) =>
+          sanitizeUser({
+            ...u,
+            // role + status should be tenant-scoped from shop_members
+            role: u.role,
+            status: u.status,
+          })
+        ),
+      },
     });
   } catch (error) {
     console.error('❌ listUsers error:', error.message);
@@ -48,20 +99,25 @@ const listUsers = async (req, res) => {
 
 // POST /api/v1/users
 const createUser = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
+    const shopId = req.shop?.id;
     const { fullName, email, contact, role, password } = req.body;
 
     if (!fullName || !email || !role || !password) {
+      await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
     const normalizedRole = String(role).toLowerCase();
     if (!MANAGEABLE_ROLES.includes(normalizedRole)) {
+      await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
-    const existing = await User.findOne({ where: { email: email.toLowerCase() } });
+    const existing = await User.findOne({ where: { email: email.toLowerCase() }, transaction });
     if (existing) {
+      await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Email already in use' });
     }
 
@@ -80,7 +136,24 @@ const createUser = async (req, res) => {
       phone: contact || null,
       role: normalizedRole,
       status: 'active',
-    });
+      last_shop_id: shopId,
+    }, { transaction });
+
+    await sequelize.query(
+      `INSERT INTO public.shop_members (shop_id, user_id, role, status, created_at, updated_at)
+       VALUES (:shop_id, :user_id, :role, 'active', NOW(), NOW())`,
+      {
+        type: QueryTypes.INSERT,
+        replacements: {
+          shop_id: shopId,
+          user_id: created.id,
+          role: normalizedRole,
+        },
+        transaction,
+      }
+    );
+
+    await transaction.commit();
 
     res.status(201).json({
       success: true,
@@ -88,6 +161,7 @@ const createUser = async (req, res) => {
       data: { user: sanitizeUser(created) },
     });
   } catch (error) {
+    await transaction.rollback();
     console.error('❌ createUser error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to create user' });
   }
@@ -96,8 +170,23 @@ const createUser = async (req, res) => {
 // PUT /api/v1/users/:id
 const updateUser = async (req, res) => {
   try {
+    const shopId = req.shop?.id;
     const { id } = req.params;
     const { fullName, email, contact, role, status } = req.body;
+
+    const [membership] = await sequelize.query(
+      `SELECT user_id FROM public.shop_members
+       WHERE shop_id = :shop_id
+         AND user_id = :user_id
+       LIMIT 1`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { shop_id: shopId, user_id: id },
+      }
+    );
+    if (!membership) {
+      return res.status(404).json({ success: false, message: 'User not found in this shop' });
+    }
 
     const user = await User.findByPk(id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -120,6 +209,16 @@ const updateUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid role' });
       }
       updates.role = normalizedRole;
+      await sequelize.query(
+        `UPDATE public.shop_members
+         SET role = :role, updated_at = NOW()
+         WHERE shop_id = :shop_id
+           AND user_id = :user_id`,
+        {
+          type: QueryTypes.UPDATE,
+          replacements: { role: normalizedRole, shop_id: shopId, user_id: id },
+        }
+      );
     }
     if (typeof status !== 'undefined') {
       const normalizedStatus = String(status).toLowerCase();
@@ -127,6 +226,16 @@ const updateUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid status' });
       }
       updates.status = normalizedStatus;
+      await sequelize.query(
+        `UPDATE public.shop_members
+         SET status = :status, updated_at = NOW()
+         WHERE shop_id = :shop_id
+           AND user_id = :user_id`,
+        {
+          type: QueryTypes.UPDATE,
+          replacements: { status: normalizedStatus, shop_id: shopId, user_id: id },
+        }
+      );
     }
     if (fullName) {
       const parts = fullName.trim().split(/\s+/);
@@ -150,13 +259,24 @@ const updateUser = async (req, res) => {
 // DELETE /api/v1/users/:id
 const deleteUser = async (req, res) => {
   try {
+    const shopId = req.shop?.id;
     const { id } = req.params;
-    const user = await User.findByPk(id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    await user.destroy();
+    const removedMembership = await sequelize.query(
+      `DELETE FROM public.shop_members
+       WHERE shop_id = :shop_id
+         AND user_id = :user_id`,
+      {
+        type: QueryTypes.DELETE,
+        replacements: { shop_id: shopId, user_id: id },
+      }
+    );
 
-    res.status(200).json({ success: true, message: 'User deleted successfully' });
+    if (!removedMembership || (Array.isArray(removedMembership) && removedMembership[1] === 0)) {
+      return res.status(404).json({ success: false, message: 'User not found in this shop' });
+    }
+
+    res.status(200).json({ success: true, message: 'User removed from this shop successfully' });
   } catch (error) {
     console.error('❌ deleteUser error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to delete user' });

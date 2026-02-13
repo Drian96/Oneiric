@@ -80,6 +80,29 @@ const Header = () => {
     return `${Math.floor(diffInSeconds / 2592000)} months ago`;
   };
 
+  const formatCurrency = (amount?: number): string | null => {
+    if (typeof amount !== 'number' || Number.isNaN(amount)) return null;
+    return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const notificationMetaText = (notification: typeof notifications[number]): string | null => {
+    const metadata = notification.metadata as Record<string, any> | null;
+    if (!metadata) return null;
+    const orderNumber = metadata.order_number ? `#${metadata.order_number}` : null;
+    const itemCount = typeof metadata.item_count === 'number'
+      ? `${metadata.item_count} item${metadata.item_count > 1 ? 's' : ''}`
+      : null;
+    const amount = formatCurrency(typeof metadata.total_amount === 'number' ? metadata.total_amount : undefined);
+    const parts = [orderNumber, itemCount, amount].filter(Boolean);
+    return parts.length > 0 ? parts.join(' • ') : null;
+  };
+
+  const notificationItemSummary = (notification: typeof notifications[number]): string | null => {
+    const metadata = notification.metadata as Record<string, any> | null;
+    if (!metadata?.item_summary || typeof metadata.item_summary !== 'string') return null;
+    return metadata.item_summary;
+  };
+
   // Handle notification click - mark as read and navigate if link exists
   const resolveNotificationTarget = (rawLink: string): string => {
     // Legacy compatibility: old notifications used /orders/:id which no longer exists.
@@ -230,6 +253,12 @@ const Header = () => {
                             <div className="flex-1">
                               <h5 className="text-sm font-medium text-gray-900">{notification.title}</h5>
                               <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                              {notificationMetaText(notification) && (
+                                <p className="text-xs text-dgreen mt-1 font-medium">{notificationMetaText(notification)}</p>
+                              )}
+                              {notificationItemSummary(notification) && (
+                                <p className="text-xs text-gray-500 mt-1">Items: {notificationItemSummary(notification)}</p>
+                              )}
                               <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(notification.created_at)}</p>
                             </div>
                             {!notification.read && (
@@ -448,6 +477,12 @@ const Header = () => {
                             <div className="flex-1">
                               <h5 className="text-xs font-medium text-gray-900">{notification.title}</h5>
                               <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                              {notificationMetaText(notification) && (
+                                <p className="text-xs text-dgreen mt-1 font-medium">{notificationMetaText(notification)}</p>
+                              )}
+                              {notificationItemSummary(notification) && (
+                                <p className="text-xs text-gray-500 mt-1">Items: {notificationItemSummary(notification)}</p>
+                              )}
                               <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(notification.created_at)}</p>
                             </div>
                             {!notification.read && (

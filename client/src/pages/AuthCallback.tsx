@@ -7,7 +7,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { handleOAuthCallback } from '../services/supabase/auth';
 import { useAuth } from '../contexts/AuthContext';
-import { getMe } from '../services/api';
 import { signOut as supabaseSignOut } from '../services/supabase/auth';
 import { resolvePostLoginRedirect } from '../utils/authRedirect';
 import { clearLoginIntent, readLoginIntent } from '../utils/loginIntent';
@@ -37,8 +36,10 @@ const AuthCallback: React.FC = () => {
           throw new Error('No session found. Please try signing in again.');
         }
         
-        await refreshAuth();
-        const me = await getMe();
+        const me = await refreshAuth();
+        if (!me) {
+          throw new Error('Unable to refresh authenticated profile.');
+        }
         setStatus('success');
 
         const returnTo = (location.state as any)?.returnTo || savedIntent?.returnTo || null;

@@ -304,40 +304,92 @@ const apiRequest = async <T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> => {
-  try {
-    const url = `${API_BASE_URL}${endpoint}`;
-    const authHeader = await getAuthHeader();
-    const config: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeader,
-        ...getShopHeader(),
-        ...options.headers,
-      },
-      ...options,
-    };
+  const url = `${API_BASE_URL}${endpoint}`;
+  const method = (options.method || 'GET').toString().toUpperCase();
+  const isSafeGet = method === 'GET';
 
-    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`);
-    
-    const response = await fetch(url, config);
-    const data = await response.json();
+  const authHeader = await getAuthHeader();
+  const baseConfig: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+      ...getShopHeader(),
+      ...options.headers,
+    },
+    ...options,
+    method,
+  };
 
-    console.log(`📡 API Response:`, data);
+  const maxRetries = 3;
+  const baseDelay = 500;
 
-    if (!response.ok) {
-      // If there are validation errors, include them in the error message
-      if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-        const errorMessages = data.errors.join('. ');
-        throw new Error(errorMessages || data.message || `HTTP ${response.status}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🌐 API Request: ${method} ${url} (attempt ${attempt + 1})`);
+      const response = await fetch(url, baseConfig);
+      const data = await response.json().catch(() => ({}));
+
+      console.log(`📡 API Response:`, data);
+
+      if (response.status === 401) {
+        // Unauthorized – clear local auth and redirect to login.
+        console.warn('⚠️ Received 401 from API, clearing session and redirecting to login.');
+        removeToken();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error('❌ Error during sign-out after 401:', signOutError);
+        }
+        const slug = getShopSlugFromPath();
+        window.location.href = slug ? `/${slug}/login` : '/login';
+        throw new Error(data.message || 'Unauthorized');
       }
-      throw new Error(data.message || `HTTP ${response.status}`);
-    }
 
-    return data;
-  } catch (error) {
-    console.error('❌ API Error:', error);
-    throw error;
+      if (response.status === 429) {
+        // Rate limited – only retry safe GETs with backoff.
+        if (!isSafeGet || attempt === maxRetries) {
+          throw new Error(data.message || 'Too many requests, please try again later.');
+        }
+        const delay = baseDelay * Math.pow(2, attempt); // 500, 1000, 2000
+        console.warn(`⚠️ 429 Too Many Requests. Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (!response.ok) {
+        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          const errorMessages = data.errors.join('. ');
+          throw new Error(errorMessages || data.message || `HTTP ${response.status}`);
+        }
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      return data;
+    } catch (error: any) {
+      // Network or other unexpected errors
+      if (error?.name === 'AbortError') {
+        console.warn('⚠️ Request was aborted:', url);
+        throw error;
+      }
+
+      // For network errors on safe GETs, do the same backoff as 429.
+      const isNetworkError =
+        error?.message?.includes('Failed to fetch') || error?.message?.includes('NetworkError');
+
+      if (isSafeGet && isNetworkError && attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ Network error on GET. Retrying in ${delay}ms...`, error);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      console.error('❌ API Error:', error);
+      throw error;
+    }
   }
+
+  // Should be unreachable
+  throw new Error('Unexpected API request failure');
 };
 
 // ============================================================================
@@ -566,6 +618,11 @@ export const registerShop = async (payload: RegisterShopRequest): Promise<Regist
 };
 
 export const getMe = async (): Promise<MeResponse> => {
+  // Developer safety: this API should only be used via AuthContext.refreshAuth.
+  // If you see this warning, consider using useAuth() instead of calling getMe directly.
+  console.warn(
+    '[Auth] getMe() is intended for AuthContext only. Prefer using useAuth() / refreshAuth().'
+  );
   const response = await apiRequest<MeResponse>('/me');
   if (response.success && response.data) return response.data;
   throw new Error(response.message || 'Failed to load profile');

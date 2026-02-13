@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { buildShopPath } from '../services/api';
 import AdminSidebar from '../components/admin/AdminSidebar';
@@ -19,10 +19,24 @@ import Footer from '../shared/Footer';
 // TODO: When backend is connected, add authentication check for admin role
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, isLoading } = useAuth();
   // State management for active section
   // TODO: Consider using React Router for URL-based navigation when backend is ready
   const [activeSection, setActiveSection] = useState('dashboard');
+
+  useEffect(() => {
+    const sectionParam = new URLSearchParams(location.search).get('section');
+    if (sectionParam === 'orders') {
+      setActiveSection('orders');
+      return;
+    }
+
+    if (location.pathname.endsWith('/admin/orders')) {
+      setActiveSection('orders');
+      return;
+    }
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (isLoading) return;

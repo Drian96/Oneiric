@@ -114,19 +114,54 @@ app.use(cors({
 app.use(morgan('combined')); // Logs: method, URL, status, response time, etc.
 
 // Rate limiting middleware - prevents abuse
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
+const defaultWindowMs = 15 * 60 * 1000; // 15 minutes
+
+// STRICT: Auth endpoints
+const strictAuthLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_AUTH_WINDOW_MS || defaultWindowMs),
+  max: Number(process.env.RATE_LIMIT_AUTH_MAX || 50),
   message: {
     success: false,
-    message: 'Too many requests from this IP, please try again later.'
+    message: 'Too many authentication attempts, please try again later.'
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isDevelopment,
 });
 
-// Apply rate limiting to all routes
-app.use(limiter);
+// MODERATE: write-heavy routes (POST/PUT/PATCH/DELETE)
+const writeLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_WRITE_WINDOW_MS || defaultWindowMs),
+  max: Number(process.env.RATE_LIMIT_WRITE_MAX || 300),
+  message: {
+    success: false,
+    message: 'Too many write requests, please slow down.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) =>
+    isDevelopment ||
+    !['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase()),
+});
+
+// RELAXED: safe reads like /me, /notifications
+const readLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_READ_WINDOW_MS || defaultWindowMs),
+  max: Number(process.env.RATE_LIMIT_READ_MAX || 1000),
+  message: {
+    success: false,
+    message: 'Too many read requests, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) =>
+    isDevelopment ||
+    req.method.toUpperCase() !== 'GET',
+});
+
+// Apply write limiter globally (methods filtered via skip)
+app.use(writeLimiter);
 
 // Body parsing middleware - parses incoming request bodies
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies, max 10MB
@@ -152,11 +187,11 @@ const API_PREFIX = '/api/v1';
 
 // Authentication routes - handles login, signup, profile management
 // All auth routes will be prefixed with /api/v1/auth
-app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/auth`, strictAuthLimiter, authRoutes);
 
-// Current user routes (Supabase auth)
+// Current user routes (Supabase auth) - relaxed read limiter
 const meRoutes = require('./routes/me');
-app.use(`${API_PREFIX}`, meRoutes);
+app.use(`${API_PREFIX}`, readLimiter, meRoutes);
 
 // Admin analytics and audit routes
 const adminRoutes = require('./routes/admin');
@@ -184,9 +219,9 @@ app.use(`${API_PREFIX}/reviews`, reviewRoutes);
 const orderRoutes = require('./routes/orders');
 app.use(`${API_PREFIX}/orders`, orderRoutes);
 
-// Notification routes
+// Notification routes (mostly reads with some updates) - relaxed limiter
 const notificationRoutes = require('./routes/notifications');
-app.use(`${API_PREFIX}/notifications`, notificationRoutes);
+app.use(`${API_PREFIX}/notifications`, readLimiter, notificationRoutes);
 
 // Root endpoint - API information
 app.get('/', (req, res) => {

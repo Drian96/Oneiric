@@ -117,6 +117,8 @@ exports.createOrder = async (req, res) => {
       }
     );
 
+    const orderItemsForNotification = [];
+
     // Create order items and update product stock
     for (const item of items) {
       const { product_id, quantity, price } = item;
@@ -155,6 +157,12 @@ exports.createOrder = async (req, res) => {
           message: `Insufficient stock for ${product.name}. Available: ${product.quantity}, Requested: ${quantity}`
         });
       }
+
+      orderItemsForNotification.push({
+        id: product.id,
+        name: product.name,
+        quantity: Number(quantity),
+      });
 
       // Create order item (order_items table doesn't have updated_at column)
       await sequelize.query(
@@ -207,7 +215,11 @@ exports.createOrder = async (req, res) => {
           newOrder.id,
           'pending',
           newOrder.total_amount,
-          shopId
+          shopId,
+          {
+            items: orderItemsForNotification,
+            itemCount: orderItemsForNotification.reduce((acc, row) => acc + Number(row.quantity || 0), 0),
+          }
         ),
         createAdminOrderNotification({
           orderNumber: newOrder.order_number,
@@ -216,6 +228,8 @@ exports.createOrder = async (req, res) => {
           customerName,
           event: 'new_order',
           shopId,
+          items: orderItemsForNotification,
+          itemCount: orderItemsForNotification.reduce((acc, row) => acc + Number(row.quantity || 0), 0),
         }),
       ]);
     } catch (notifError) {

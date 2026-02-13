@@ -65,27 +65,50 @@ const createNotification = async (notificationData) => {
 /**
  * Create order-related notifications
  */
-const createOrderNotification = async (userId, orderNumber, orderId, status, totalAmount, shopId) => {
+const formatPeso = (amount) =>
+  `₱${Number(amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const summarizeItems = (items = []) => {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const [first] = items;
+  if (!first?.name) return null;
+  const quantity = Number(first.quantity || 1);
+  const firstLabel = `${quantity}x ${first.name}`;
+  const extraCount = items.length - 1;
+  return extraCount > 0 ? `${firstLabel} (+${extraCount} more)` : firstLabel;
+};
+
+const createOrderNotification = async (
+  userId,
+  orderNumber,
+  orderId,
+  status,
+  totalAmount,
+  shopId,
+  options = {}
+) => {
+  const itemCount = Number(options.itemCount || 0);
+  const itemSummary = options.itemSummary || summarizeItems(options.items);
   const statusMessages = {
     pending: {
       title: 'Order Placed',
-      message: `Your order #${orderNumber} has been placed successfully. Total: ₱${totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+      message: `Order #${orderNumber} placed • ${itemCount > 0 ? `${itemCount} item${itemCount > 1 ? 's' : ''} • ` : ''}${formatPeso(totalAmount)}`,
     },
     confirmed: {
       title: 'Order Confirmed',
-      message: `Your order #${orderNumber} has been confirmed and is being processed.`,
+      message: `Order #${orderNumber} is confirmed and being prepared.`,
     },
     shipped: {
       title: 'Order Shipped',
-      message: `Your order #${orderNumber} has been shipped and is on its way!`,
+      message: `Order #${orderNumber} is on the way.`,
     },
     delivered: {
       title: 'Order Delivered',
-      message: `Your order #${orderNumber} has been delivered. We hope you enjoy your purchase!`,
+      message: `Order #${orderNumber} was delivered successfully.`,
     },
     cancelled: {
       title: 'Order Cancelled',
-      message: `Your order #${orderNumber} has been cancelled.`,
+      message: `Order #${orderNumber} was cancelled.`,
     },
   };
 
@@ -105,6 +128,9 @@ const createOrderNotification = async (userId, orderNumber, orderId, status, tot
       order_id: orderId,
       order_number: orderNumber,
       status: status,
+      total_amount: Number(totalAmount || 0),
+      item_count: itemCount || undefined,
+      item_summary: itemSummary || undefined,
     },
   });
 };
@@ -164,7 +190,18 @@ const fetchShopAdmins = async (shopId) => {
   }
 };
 
-const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount, customerName, event, shopId }) => {
+const createAdminOrderNotification = async ({
+  orderNumber,
+  orderId,
+  totalAmount,
+  customerName,
+  event,
+  shopId,
+  items = [],
+  itemCount = 0,
+}) => {
+  const safeItemCount = Number(itemCount || (Array.isArray(items) ? items.reduce((acc, i) => acc + Number(i.quantity || 0), 0) : 0));
+  const itemSummary = summarizeItems(items);
   console.log(`🔔 Creating admin order notifications for shop ${shopId} (event: ${event}, order: ${orderNumber})`);
   const admins = await fetchShopAdmins(shopId);
   if (admins.length === 0) {
@@ -174,8 +211,8 @@ const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount,
 
   const eventMessages = {
     new_order: {
-      title: 'New Order Placed',
-      message: `${customerName} placed order #${orderNumber} • ₱${totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+      title: 'New Order',
+      message: customerName,
     },
     cancelled: {
       title: 'Order Cancelled by Customer',
@@ -206,6 +243,9 @@ const createAdminOrderNotification = async ({ orderNumber, orderId, totalAmount,
           order_number: orderNumber,
           event,
           customer_name: customerName,
+          total_amount: Number(totalAmount || 0),
+          item_count: safeItemCount || undefined,
+          item_summary: itemSummary || undefined,
         },
       })
     )

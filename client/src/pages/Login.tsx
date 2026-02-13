@@ -6,7 +6,7 @@ import { twMerge } from 'tailwind-merge';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { signInWithGoogle } from '../services/supabase/auth';
-import { buildShopPath, getMe } from '../services/api';
+import { buildShopPath } from '../services/api';
 import { resolvePostLoginRedirect } from '../utils/authRedirect';
 import { clearLoginIntent, createLoginIntent, readLoginIntent, saveLoginIntent } from '../utils/loginIntent';
 import furnitureLogo from '../assets/AR-Furniture_Logo.png';
@@ -19,7 +19,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, memberships, lastShopSlug, isAuthenticated, isLoading } = useAuth();
+  const { login, memberships, lastShopSlug, isAuthenticated, isLoading, refreshAuth } = useAuth();
   const navigate = useNavigate();
   const { shopSlug } = useParams();
   const location = useLocation();
@@ -72,7 +72,10 @@ const Login: React.FC = () => {
     setError('');
     try {
       await login({ email, password });
-      const me = await getMe();
+      const me = await refreshAuth();
+      if (!me) {
+        throw new Error('Unable to load profile after login.');
+      }
       const returnTo = (location.state as any)?.returnTo || savedIntent?.returnTo || null;
       const target = resolvePostLoginRedirect({
         origin: intentOrigin,

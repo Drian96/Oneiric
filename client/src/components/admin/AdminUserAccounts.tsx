@@ -5,6 +5,7 @@ import { adminListUsers, adminCreateUser, adminDeleteUser, adminUpdateUser } fro
 // User accounts management component for admin
 // TODO: When backend is connected, fetch real user accounts data from your Express API
 const AdminUserAccounts = () => {
+  const STAFF_ROLES = new Set(['admin', 'manager', 'staff']);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
@@ -43,8 +44,9 @@ const AdminUserAccounts = () => {
     const load = async () => {
       try {
         const data = await adminListUsers();
-        const filtered = data.users.filter(u => u.role !== 'customer');
-        const mapped = filtered.map(u => ({
+        const mapped = data.users
+          .filter(u => STAFF_ROLES.has(String(u.role || '').toLowerCase()))
+          .map(u => ({
           id: u.id,
           name: `${u.firstName} ${u.lastName}`,
           email: u.email,
@@ -75,8 +77,9 @@ const AdminUserAccounts = () => {
     })
       .then(async () => {
         const data = await adminListUsers();
-        const filtered = data.users.filter(u => u.role !== 'customer');
-        const mapped = filtered.map(u => ({
+        const mapped = data.users
+          .filter(u => STAFF_ROLES.has(String(u.role || '').toLowerCase()))
+          .map(u => ({
           id: u.id,
           name: `${u.firstName} ${u.lastName}`,
           email: u.email,
@@ -131,8 +134,9 @@ const AdminUserAccounts = () => {
       
       // Refresh the user list
       const data = await adminListUsers();
-      const filtered = data.users.filter(u => u.role !== 'customer');
-      const mapped = filtered.map(u => ({
+      const mapped = data.users
+        .filter(u => STAFF_ROLES.has(String(u.role || '').toLowerCase()))
+        .map(u => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`,
         email: u.email,
@@ -165,8 +169,9 @@ const AdminUserAccounts = () => {
       setShowDeleteConfirm(false);
       setSelectedUser(null);
       const data = await adminListUsers();
-      const filtered = data.users.filter(u => u.role !== 'customer');
-      const mapped = filtered.map(u => ({
+      const mapped = data.users
+        .filter(u => STAFF_ROLES.has(String(u.role || '').toLowerCase()))
+        .map(u => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`,
         email: u.email,

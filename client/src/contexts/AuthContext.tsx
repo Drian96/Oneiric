@@ -15,6 +15,7 @@ import {
   getMe,
   getShopSlugFromPath,
   ShopMembership,
+  MeResponse,
 } from '../services/api';
 import { supabase } from '../services/supabase/client';
 import { signOut as supabaseSignOut } from '../services/supabase/auth';
@@ -43,7 +44,7 @@ interface AuthContextType {
   
   // Utility functions
   clearUser: () => void;
-  refreshAuth: () => Promise<void>;
+  refreshAuth: () => Promise<MeResponse | null>;
 }
 
 // Provider props interface
@@ -69,6 +70,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [lastShopSlug, setLastShopSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // In-memory cache and deduplication for /me
+  const meInFlightRef = React.useRef<Promise<MeResponse | null> | null>(null);
+  const meCacheRef = React.useRef<{ data: MeResponse | null; ts: number } | null>(null);
+  const authGenerationRef = React.useRef(0);
+  const ME_CACHE_TTL_MS = 30_000; // 30 seconds
+
+  const loadMe = async (opts: { force?: boolean } = {}): Promise<MeResponse | null> => {
+    const { force = false } = opts;
+    const now = Date.now();
+
+    if (
+      !force &&
+      meCacheRef.current &&
+      now - meCacheRef.current.ts < ME_CACHE_TTL_MS
+    ) {
+      return meCacheRef.current.data;
+    }
+
+    if (meInFlightRef.current) {
+      return meInFlightRef.current;
+    }
+
+    const promise = (async () => {
+      try {
+        const me = await getMe();
+        meCacheRef.current = { data: me, ts: Date.now() };
+        return me;
+      } catch (err) {
+        meCacheRef.current = null;
+        throw err;
+      } finally {
+        meInFlightRef.current = null;
+      }
+    })();
+
+    meInFlightRef.current = promise;
+    return promise;
+  };
+
   // ============================================================================
   // INITIALIZATION EFFECT
   // Check for existing token and validate it on app startup
@@ -81,7 +121,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         const { data } = await supabase.auth.getSession();
         if (data.session) {
-          const me = await getMe();
+          const generationAtStart = authGenerationRef.current;
+          const me = await loadMe({ force: false });
+          if (!me || authGenerationRef.current !== generationAtStart) {
+            return;
+          }
           setUser(me.user);
           setMemberships(me.memberships || []);
           setLastShopSlug(me.lastShopSlug || null);
@@ -129,10 +173,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         password: userData.password,
       });
       if (data.session) {
-        const me = await getMe();
-        setUser(me.user);
-        setMemberships(me.memberships || []);
-        setLastShopSlug(me.lastShopSlug || null);
+        authGenerationRef.current += 1;
+        meCacheRef.current = null;
+        const me = await loadMe({ force: true });
+        if (me) {
+          setUser(me.user);
+          setMemberships(me.memberships || []);
+          setLastShopSlug(me.lastShopSlug || null);
+        }
       }
     } catch (error) {
       console.error('❌ Registration failed:', error);
@@ -158,7 +206,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!data.session) {
         throw new Error('No session found after login.');
       }
-      const me = await getMe();
+      authGenerationRef.current += 1;
+      meCacheRef.current = null;
+      const me = await loadMe({ force: true });
+      if (!me) {
+        throw new Error('Unable to load profile after login.');
+      }
       setUser(me.user);
       setMemberships(me.memberships || []);
       setLastShopSlug(me.lastShopSlug || null);
@@ -183,6 +236,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(null);
       setMemberships([]);
       setLastShopSlug(null);
+      authGenerationRef.current += 1;
+      meCacheRef.current = null;
+      meInFlightRef.current = null;
       
       console.log('✅ Logout successful');
       
@@ -195,6 +251,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(null);
       setMemberships([]);
       setLastShopSlug(null);
+      authGenerationRef.current += 1;
+      meCacheRef.current = null;
+      meInFlightRef.current = null;
       // Still redirect to home page
       const shopSlug = getShopSlugFromPath();
       window.location.href = shopSlug ? `/${shopSlug}` : '/';
@@ -252,31 +311,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
     setMemberships([]);
     setLastShopSlug(null);
+    authGenerationRef.current += 1;
+    meCacheRef.current = null;
+    meInFlightRef.current = null;
   };
 
   /**
    * Refresh authentication state by verifying the current token
    * Useful after OAuth callbacks or token updates
    */
-  const refreshAuth = async (): Promise<void> => {
+  const refreshAuth = async (): Promise<MeResponse | null> => {
     try {
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        const me = await getMe();
+        const generationAtStart = authGenerationRef.current;
+        const me = await loadMe({ force: true });
+        if (!me || authGenerationRef.current !== generationAtStart) {
+          return null;
+        }
         setUser(me.user);
         setMemberships(me.memberships || []);
         setLastShopSlug(me.lastShopSlug || null);
         console.log('✅ Auth refreshed, user authenticated:', me.user.email);
+        return me;
       } else {
         setUser(null);
         setMemberships([]);
         setLastShopSlug(null);
+        return null;
       }
     } catch (error) {
       console.error('❌ Auth refresh failed:', error);
       setUser(null);
       setMemberships([]);
       setLastShopSlug(null);
+      return null;
     }
   };
 
